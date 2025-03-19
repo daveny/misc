@@ -1,0 +1,22 @@
+<h1>User Report</h1>
+<div class="report-section">
+  <h2>Active Users</h2>
+  {{ query="SELECT * FROM [HumanResources].[Department]"; representation="table" }}
+</div>
+<div>
+  <h2>User Registrations by Month</h2>
+  {{ query="SELECT YEAR(soh.OrderDate) as OrderYear, SUM(sod.LineTotal) as LineTotal, COUNT(sod.SalesOrderID) AS Cnt FROM [Sales].SalesOrderDetail sod  INNER JOIN Sales.SalesOrderHeader soh ON sod.SalesOrderID = soh.SalesOrderID GROUP BY YEAR(soh.OrderDate), YEAR(soh.OrderDate) ORDER BY 1"; representation="barchart"; series=["LineTotal", "Cnt"]; yAxes={"LineTotal":"y", "Cnt":"y2"}; formatting={
+  backgroundColor: "rgba(200, 200, 200, 0.5)",
+  borderColor: "rgba(75, 192, 192, 1)",
+  title: "Revenue by Category",
+  borderWidth: 2,
+  horizontal: false
+  } }}
+</div>
+
+<div class="report-section">
+  <h2>User Registrations by Month</h2>
+  {{ query="SELECT YEAR(soh.OrderDate) as OrderYear, SUM(sod.LineTotal) as LineTotal, COUNT(sod.SalesOrderID) AS Cnt FROM [Sales].SalesOrderDetail sod  INNER JOIN Sales.SalesOrderHeader soh ON sod.SalesOrderID = soh.SalesOrderID GROUP BY YEAR(soh.OrderDate), YEAR(soh.OrderDate) ORDER BY 1"; representation="linechart"; series=["LineTotal", "Cnt"]; yAxes={"LineTotal":"y", "Cnt":"y2"}; formatting={
+  title: "Revenue by Category"
+  } }}
+</div>
