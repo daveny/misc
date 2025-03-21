@@ -397,8 +397,8 @@ namespace WebApplication6
             return options;
         }
 
-        // RenderLineChart method with support for multiple series
-        // Updated RenderBarChart method with multiple Y-axes support
+        // This is a complete implementation of the BarChart method with the fix for duplicate labels
+
         private string RenderBarChart(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the chart
@@ -409,7 +409,6 @@ namespace WebApplication6
             int borderWidth = 1;
             bool horizontal = false;
             bool stacked = false;
-            bool multiAxis = false;
 
             // Define default colors to cycle through
             string[] backgroundColors = new string[]
@@ -418,7 +417,10 @@ namespace WebApplication6
         "rgba(255, 99, 132, 0.2)",
         "rgba(54, 162, 235, 0.2)",
         "rgba(255, 206, 86, 0.2)",
-        "rgba(153, 102, 255, 0.2)"
+        "rgba(153, 102, 255, 0.2)",
+        "rgba(255, 159, 64, 0.2)",
+        "rgba(201, 203, 207, 0.2)",
+        "rgba(100, 149, 237, 0.2)"
             };
 
             string[] borderColors = new string[]
@@ -427,7 +429,10 @@ namespace WebApplication6
         "rgba(255, 99, 132, 1)",
         "rgba(54, 162, 235, 1)",
         "rgba(255, 206, 86, 1)",
-        "rgba(153, 102, 255, 1)"
+        "rgba(153, 102, 255, 1)",
+        "rgba(255, 159, 64, 1)",
+        "rgba(201, 203, 207, 1)",
+        "rgba(100, 149, 237, 1)"
             };
 
             // Get series column names
@@ -454,54 +459,11 @@ namespace WebApplication6
                 seriesColumns.Add(data.Columns[1].ColumnName);
             }
 
-            // Check if we need multiple Y-axes
-            Dictionary<string, string> seriesYAxisMap = new Dictionary<string, string>();
-            if (instructions.ContainsKey("yAxes"))
+            // Check if we need to group by a column
+            string groupByColumn = null;
+            if (instructions.ContainsKey("groupBy"))
             {
-                multiAxis = true;
-                string yAxesValue = instructions["yAxes"];
-
-                if (yAxesValue.StartsWith("{") && yAxesValue.EndsWith("}"))
-                {
-                    // Remove the outer braces
-                    yAxesValue = yAxesValue.Substring(1, yAxesValue.Length - 2);
-
-                    // Split by commas that are not inside quotes
-                    List<string> axisMappings = new List<string>();
-                    bool inQuotes = false;
-                    int startPos = 0;
-
-                    for (int i = 0; i < yAxesValue.Length; i++)
-                    {
-                        if (yAxesValue[i] == '"' && (i == 0 || yAxesValue[i - 1] != '\\'))
-                        {
-                            inQuotes = !inQuotes;
-                        }
-                        else if (yAxesValue[i] == ',' && !inQuotes)
-                        {
-                            axisMappings.Add(yAxesValue.Substring(startPos, i - startPos).Trim());
-                            startPos = i + 1;
-                        }
-                    }
-
-                    // Add the last part
-                    if (startPos < yAxesValue.Length)
-                    {
-                        axisMappings.Add(yAxesValue.Substring(startPos).Trim());
-                    }
-
-                    // Process each mapping
-                    foreach (string mapping in axisMappings)
-                    {
-                        int colonPos = mapping.IndexOf(':');
-                        if (colonPos > 0)
-                        {
-                            string seriesName = mapping.Substring(0, colonPos).Trim().Trim('"');
-                            string axisId = mapping.Substring(colonPos + 1).Trim().Trim('"');
-                            seriesYAxisMap[seriesName] = axisId;
-                        }
-                    }
-                }
+                groupByColumn = instructions["groupBy"];
             }
 
             // Get legends (defaults to first column for labels on x-axis)
@@ -527,20 +489,6 @@ namespace WebApplication6
                     legendsColumn = legendsValue;
                 }
             }
-
-            // Get legend column index
-            int legendsColumnIndex = 0;
-            for (int i = 0; i < data.Columns.Count; i++)
-            {
-                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
-                {
-                    legendsColumnIndex = i;
-                    break;
-                }
-            }
-
-            // Dictionary to store Y-axis configuration
-            Dictionary<string, Dictionary<string, string>> yAxisConfigs = new Dictionary<string, Dictionary<string, string>>();
 
             // Extract formatting options if available
             if (instructions.ContainsKey("formatting"))
@@ -595,247 +543,231 @@ namespace WebApplication6
                         bool.TryParse(stackedStr, out stacked);
                     }
                 }
+            }
 
-                // Parse Y-axis configurations for multiple axes
-                if (multiAxis && formattingStr.Contains("yAxis:"))
+            // Get column indices
+            int legendsColumnIndex = -1;
+            Dictionary<string, int> seriesColumnIndices = new Dictionary<string, int>();
+            int groupByColumnIndex = -1;
+
+            // Find legend column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
                 {
-                    int yAxisStart = formattingStr.IndexOf("yAxis:") + 6;
-                    int yAxisEnd = FindMatchingClosingBrace(formattingStr, yAxisStart);
-
-                    if (yAxisEnd > yAxisStart)
-                    {
-                        string yAxisStr = formattingStr.Substring(yAxisStart, yAxisEnd - yAxisStart).Trim();
-
-                        // Process each Y-axis configuration
-                        int pos = 0;
-                        while (pos < yAxisStr.Length)
-                        {
-                            int idStart = yAxisStr.IndexOf("id:", pos) + 3;
-                            if (idStart < 3) break; // No more IDs found
-
-                            int idEnd = yAxisStr.IndexOf(",", idStart);
-                            if (idEnd == -1) break;
-
-                            string axisId = yAxisStr.Substring(idStart, idEnd - idStart).Trim().Trim('"');
-
-                            int configStart = yAxisStr.IndexOf("{", idEnd) + 1;
-                            int configEnd = FindMatchingClosingBrace(yAxisStr, configStart - 1);
-
-                            if (configEnd > configStart)
-                            {
-                                string configStr = yAxisStr.Substring(configStart, configEnd - configStart).Trim();
-                                Dictionary<string, string> axisConfig = new Dictionary<string, string>();
-
-                                // Parse position
-                                int positionStart = configStr.IndexOf("position:") + 9;
-                                if (positionStart > 9)
-                                {
-                                    int positionEnd = configStr.IndexOf(",", positionStart);
-                                    if (positionEnd == -1) positionEnd = configStr.Length;
-                                    string position = configStr.Substring(positionStart, positionEnd - positionStart).Trim().Trim('"');
-                                    axisConfig["position"] = position;
-                                }
-
-                                // Parse title
-                                int titleStart = configStr.IndexOf("title:") + 6;
-                                if (titleStart > 6)
-                                {
-                                    int titleEnd = configStr.IndexOf(",", titleStart);
-                                    if (titleEnd == -1) titleEnd = configStr.Length;
-                                    string title = configStr.Substring(titleStart, titleEnd - titleStart).Trim().Trim('"');
-                                    axisConfig["title"] = title;
-                                }
-
-                                // Parse color
-                                int colorStart = configStr.IndexOf("color:") + 6;
-                                if (colorStart > 6)
-                                {
-                                    int colorEnd = configStr.IndexOf(",", colorStart);
-                                    if (colorEnd == -1) colorEnd = configStr.Length;
-                                    string color = configStr.Substring(colorStart, colorEnd - colorStart).Trim().Trim('"');
-                                    axisConfig["color"] = color;
-                                }
-
-                                // Store the configuration
-                                yAxisConfigs[axisId] = axisConfig;
-
-                                // Move to the next axis configuration
-                                pos = configEnd + 1;
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-                    }
+                    legendsColumnIndex = i;
+                    break;
                 }
             }
 
-            // Extract labels for x-axis
-            List<string> labels = new List<string>();
-            foreach (DataRow row in data.Rows)
+            // Find series column indices
+            foreach (string seriesName in seriesColumns)
             {
-                labels.Add(row[legendsColumnIndex].ToString());
-            }
-
-            // Prepare datasets for each series
-            List<string> datasets = new List<string>();
-            HashSet<string> usedYAxisIds = new HashSet<string>();
-
-            for (int i = 0; i < seriesColumns.Count; i++)
-            {
-                string seriesName = seriesColumns[i];
-                int seriesColumnIndex = -1;
-
-                // Find column index by name
-                for (int j = 0; j < data.Columns.Count; j++)
+                for (int i = 0; i < data.Columns.Count; i++)
                 {
-                    if (data.Columns[j].ColumnName.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
+                    if (data.Columns[i].ColumnName.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
                     {
-                        seriesColumnIndex = j;
+                        seriesColumnIndices[seriesName] = i;
                         break;
                     }
                 }
+            }
 
-                if (seriesColumnIndex == -1) continue; // Skip if column not found
-
-                // Extract values for this series
-                List<double> values = new List<double>();
-                foreach (DataRow row in data.Rows)
+            // Find groupBy column index if specified
+            if (!string.IsNullOrEmpty(groupByColumn))
+            {
+                for (int i = 0; i < data.Columns.Count; i++)
                 {
-                    values.Add(Convert.ToDouble(row[seriesColumnIndex]));
-                }
-
-                // Use current series color from the palette
-                string backgroundColor = backgroundColors[i % backgroundColors.Length];
-                string borderColor = borderColors[i % borderColors.Length];
-
-                // Custom colors can be added from formatting
-                if (instructions.ContainsKey("formatting"))
-                {
-                    string formattingStr = instructions["formatting"];
-
-                    if (formattingStr.Contains($"backgroundColor{i}:"))
+                    if (data.Columns[i].ColumnName.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase))
                     {
-                        int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
-                        int end = formattingStr.IndexOf(",", start);
-                        if (end == -1) end = formattingStr.IndexOf("}", start);
-                        if (end > start)
+                        groupByColumnIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // Get unique ORDERED labels for x-axis
+            List<string> labels = GetUniqueOrderedLabels(data, legendsColumnIndex);
+
+            // Prepare datasets
+            List<string> datasets = new List<string>();
+
+            // If groupBy is specified and valid
+            if (!string.IsNullOrEmpty(groupByColumn) && groupByColumnIndex != -1)
+            {
+                // Get unique categories from groupBy column
+                List<string> uniqueCategories = data.AsEnumerable()
+                    .Select(row => row[groupByColumnIndex].ToString())
+                    .Distinct()
+                    .OrderBy(c => c)
+                    .ToList();
+
+                // For each series
+                int seriesIndex = 0;
+                foreach (string seriesName in seriesColumns)
+                {
+                    if (!seriesColumnIndices.ContainsKey(seriesName)) continue;
+
+                    int colIndex = seriesColumnIndices[seriesName];
+
+                    // For each category create a dataset
+                    int categoryIndex = 0;
+                    foreach (string category in uniqueCategories)
+                    {
+                        // Extract values for this category
+                        Dictionary<string, double> valuesByLegend = new Dictionary<string, double>();
+
+                        // Initialize all legends with zero value
+                        foreach (string legend in labels)
                         {
-                            backgroundColor = formattingStr.Substring(start, end - start).Trim();
-                            if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
-                                backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
+                            valuesByLegend[legend] = 0;
+                        }
+
+                        // Fill in actual values
+                        foreach (DataRow row in data.Rows)
+                        {
+                            if (row[groupByColumnIndex].ToString() == category)
+                            {
+                                string legend = row[legendsColumnIndex].ToString();
+                                if (valuesByLegend.ContainsKey(legend))
+                                {
+                                    valuesByLegend[legend] = Convert.ToDouble(row[colIndex]);
+                                }
+                            }
+                        }
+
+                        // Extract ordered values based on labels
+                        List<double> values = new List<double>();
+                        foreach (string legend in labels)
+                        {
+                            values.Add(valuesByLegend[legend]);
+                        }
+
+                        // Use colors from the palette with cycling
+                        string backgroundColor = backgroundColors[categoryIndex % backgroundColors.Length];
+                        string borderColor = borderColors[categoryIndex % borderColors.Length];
+
+                        // Custom colors from formatting
+                        if (instructions.ContainsKey("formatting"))
+                        {
+                            string formattingStr = instructions["formatting"];
+
+                            if (formattingStr.Contains($"backgroundColor{categoryIndex}:"))
+                            {
+                                int start = formattingStr.IndexOf($"backgroundColor{categoryIndex}:") + 15 + categoryIndex.ToString().Length;
+                                int end = formattingStr.IndexOf(",", start);
+                                if (end == -1) end = formattingStr.IndexOf("}", start);
+                                if (end > start)
+                                {
+                                    backgroundColor = formattingStr.Substring(start, end - start).Trim();
+                                    if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
+                                        backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
+                                }
+                            }
+
+                            if (formattingStr.Contains($"borderColor{categoryIndex}:"))
+                            {
+                                int start = formattingStr.IndexOf($"borderColor{categoryIndex}:") + 12 + categoryIndex.ToString().Length;
+                                int end = formattingStr.IndexOf(",", start);
+                                if (end == -1) end = formattingStr.IndexOf("}", start);
+                                if (end > start)
+                                {
+                                    borderColor = formattingStr.Substring(start, end - start).Trim();
+                                    if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
+                                        borderColor = borderColor.Substring(1, borderColor.Length - 2);
+                                }
+                            }
+                        }
+
+                        // Create dataset label
+                        string datasetLabel = seriesColumns.Count > 1
+                            ? $"{seriesName} - {category}"
+                            : category;
+
+                        // Create dataset JSON
+                        string dataset = $@"{{
+                    label: '{datasetLabel}',
+                    data: {JsonConvert.SerializeObject(values)},
+                    backgroundColor: '{backgroundColor}',
+                    borderColor: '{borderColor}',
+                    borderWidth: {borderWidth}
+                }}";
+
+                        datasets.Add(dataset);
+                        categoryIndex++;
+                    }
+
+                    seriesIndex++;
+                }
+            }
+            else
+            {
+                // Traditional chart rendering (no groupBy)
+                for (int i = 0; i < seriesColumns.Count; i++)
+                {
+                    string seriesName = seriesColumns[i];
+                    if (!seriesColumnIndices.ContainsKey(seriesName)) continue;
+
+                    int colIndex = seriesColumnIndices[seriesName];
+
+                    // Extract values for this series
+                    List<double> values = new List<double>();
+                    foreach (DataRow row in data.Rows)
+                    {
+                        values.Add(Convert.ToDouble(row[colIndex]));
+                    }
+
+                    // Use current series color from the palette
+                    string backgroundColor = backgroundColors[i % backgroundColors.Length];
+                    string borderColor = borderColors[i % borderColors.Length];
+
+                    // Custom colors can be added from formatting
+                    if (instructions.ContainsKey("formatting"))
+                    {
+                        string formattingStr = instructions["formatting"];
+
+                        if (formattingStr.Contains($"backgroundColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                backgroundColor = formattingStr.Substring(start, end - start).Trim();
+                                if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
+                                    backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
+                            }
+                        }
+
+                        if (formattingStr.Contains($"borderColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                borderColor = formattingStr.Substring(start, end - start).Trim();
+                                if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
+                                    borderColor = borderColor.Substring(1, borderColor.Length - 2);
+                            }
                         }
                     }
 
-                    if (formattingStr.Contains($"borderColor{i}:"))
-                    {
-                        int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
-                        int end = formattingStr.IndexOf(",", start);
-                        if (end == -1) end = formattingStr.IndexOf("}", start);
-                        if (end > start)
-                        {
-                            borderColor = formattingStr.Substring(start, end - start).Trim();
-                            if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
-                                borderColor = borderColor.Substring(1, borderColor.Length - 2);
-                        }
-                    }
+                    // Create dataset JSON for this series
+                    string dataset = $@"{{
+                label: '{seriesName}',
+                data: {JsonConvert.SerializeObject(values)},
+                backgroundColor: '{backgroundColor}',
+                borderColor: '{borderColor}',
+                borderWidth: {borderWidth}
+            }}";
+
+                    datasets.Add(dataset);
                 }
-
-                // Determine Y-axis for this series
-                string yAxisId = "y";
-                if (multiAxis && seriesYAxisMap.ContainsKey(seriesName))
-                {
-                    yAxisId = seriesYAxisMap[seriesName];
-                    usedYAxisIds.Add(yAxisId);
-                }
-
-                // Create dataset JSON for this series
-                string dataset = $@"{{
-            label: '{seriesName}',
-            data: {JsonConvert.SerializeObject(values)},
-            backgroundColor: '{backgroundColor}',
-            borderColor: '{borderColor}',
-            borderWidth: {borderWidth},
-            yAxisID: '{yAxisId}'
-        }}";
-
-                datasets.Add(dataset);
             }
 
             // Create the HTML container for the chart
             string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
-
-            // Build the scales configuration for Chart.js
-            string scalesConfig = "scales: {";
-
-            // Add x-axis configuration
-            scalesConfig += $@"
-        x: {{
-            stacked: {stacked.ToString().ToLower()}
-        }},";
-
-            // Add primary y-axis
-            scalesConfig += $@"
-        y: {{
-            type: 'linear',
-            display: true,
-            position: 'left',
-            beginAtZero: true,
-            stacked: {stacked.ToString().ToLower()},
-            title: {{
-                display: true,
-                text: 'Primary'
-            }}
-        }},";
-
-            // Add additional y-axes if needed
-            if (multiAxis)
-            {
-                foreach (string axisId in usedYAxisIds)
-                {
-                    if (axisId == "y") continue; // Skip the primary axis
-
-                    string position = "right";
-                    string title = axisId;
-                    string color = null;
-
-                    if (yAxisConfigs.ContainsKey(axisId))
-                    {
-                        var config = yAxisConfigs[axisId];
-                        if (config.ContainsKey("position")) position = config["position"];
-                        if (config.ContainsKey("title")) title = config["title"];
-                        if (config.ContainsKey("color")) color = config["color"];
-                    }
-
-                    scalesConfig += $@"
-        {axisId}: {{
-            type: 'linear',
-            display: true,
-            position: '{position}',
-            beginAtZero: true,
-            grid: {{
-                drawOnChartArea: false
-            }},
-            title: {{
-                display: true,
-                text: '{title}'
-            }}";
-
-                    if (!string.IsNullOrEmpty(color))
-                    {
-                        scalesConfig += $@",
-            ticks: {{
-                color: '{color}'
-            }}";
-                    }
-
-                    scalesConfig += @"
-        },";
-                }
-            }
-
-            scalesConfig += "}";
 
             // Add the Chart.js initialization script
             html += $@"
@@ -852,7 +784,22 @@ namespace WebApplication6
                 indexAxis: '{(horizontal ? "y" : "x")}',
                 responsive: true,
                 maintainAspectRatio: false,
-                {scalesConfig},
+                scales: {{
+                    x: {{
+                        type: 'category',
+                        display: true,
+                        grid: {{
+                            offset: false
+                        }},
+                        ticks: {{
+                            autoSkip: false
+                        }}
+                    }},
+                    y: {{
+                        stacked: {stacked.ToString().ToLower()},
+                        beginAtZero: true
+                    }}
+                }},
                 plugins: {{
                     legend: {{
                         display: true,
@@ -871,7 +818,19 @@ namespace WebApplication6
             return html;
         }
 
+        // Helper method to get unique ordered labels
+        private List<string> GetUniqueOrderedLabels(DataTable data, int legendsColumnIndex)
+        {
+            // Use OrderBy to ensure consistent ordering and prevent duplicates
+            return data.AsEnumerable()
+                .Select(row => row[legendsColumnIndex].ToString())
+                .Distinct()
+                .OrderBy(label => label)
+                .ToList();
+        }
+
         // Updated RenderLineChart method with multiple Y-axes support
+        // Complete implementation of RenderLineChart with groupBy support
         private string RenderLineChart(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the chart
@@ -881,25 +840,18 @@ namespace WebApplication6
             string chartTitle = "Line Chart";
             bool showPoints = true;
             int tension = 0; // 0 = straight lines, higher values = more curved
-            bool multiAxis = false;
 
             // Define default colors to cycle through
-            string[] backgroundColors = new string[]
-            {
-        "rgba(75, 192, 192, 0.2)",
-        "rgba(255, 99, 132, 0.2)",
-        "rgba(54, 162, 235, 0.2)",
-        "rgba(255, 206, 86, 0.2)",
-        "rgba(153, 102, 255, 0.2)"
-            };
-
-            string[] borderColors = new string[]
+            string[] colors = new string[]
             {
         "rgba(75, 192, 192, 1)",
         "rgba(255, 99, 132, 1)",
         "rgba(54, 162, 235, 1)",
         "rgba(255, 206, 86, 1)",
-        "rgba(153, 102, 255, 1)"
+        "rgba(153, 102, 255, 1)",
+        "rgba(255, 159, 64, 1)",
+        "rgba(201, 203, 207, 1)",
+        "rgba(100, 149, 237, 1)"
             };
 
             // Get series column names
@@ -926,54 +878,11 @@ namespace WebApplication6
                 seriesColumns.Add(data.Columns[1].ColumnName);
             }
 
-            // Check if we need multiple Y-axes
-            Dictionary<string, string> seriesYAxisMap = new Dictionary<string, string>();
-            if (instructions.ContainsKey("yAxes"))
+            // Check if we need to group by a column
+            string groupByColumn = null;
+            if (instructions.ContainsKey("groupBy"))
             {
-                multiAxis = true;
-                string yAxesValue = instructions["yAxes"];
-
-                if (yAxesValue.StartsWith("{") && yAxesValue.EndsWith("}"))
-                {
-                    // Remove the outer braces
-                    yAxesValue = yAxesValue.Substring(1, yAxesValue.Length - 2);
-
-                    // Split by commas that are not inside quotes
-                    List<string> axisMappings = new List<string>();
-                    bool inQuotes = false;
-                    int startPos = 0;
-
-                    for (int i = 0; i < yAxesValue.Length; i++)
-                    {
-                        if (yAxesValue[i] == '"' && (i == 0 || yAxesValue[i - 1] != '\\'))
-                        {
-                            inQuotes = !inQuotes;
-                        }
-                        else if (yAxesValue[i] == ',' && !inQuotes)
-                        {
-                            axisMappings.Add(yAxesValue.Substring(startPos, i - startPos).Trim());
-                            startPos = i + 1;
-                        }
-                    }
-
-                    // Add the last part
-                    if (startPos < yAxesValue.Length)
-                    {
-                        axisMappings.Add(yAxesValue.Substring(startPos).Trim());
-                    }
-
-                    // Process each mapping
-                    foreach (string mapping in axisMappings)
-                    {
-                        int colonPos = mapping.IndexOf(':');
-                        if (colonPos > 0)
-                        {
-                            string seriesName = mapping.Substring(0, colonPos).Trim().Trim('"');
-                            string axisId = mapping.Substring(colonPos + 1).Trim().Trim('"');
-                            seriesYAxisMap[seriesName] = axisId;
-                        }
-                    }
-                }
+                groupByColumn = instructions["groupBy"];
             }
 
             // Get legends (defaults to first column for labels on x-axis)
@@ -999,20 +908,6 @@ namespace WebApplication6
                     legendsColumn = legendsValue;
                 }
             }
-
-            // Get legend column index
-            int legendsColumnIndex = 0;
-            for (int i = 0; i < data.Columns.Count; i++)
-            {
-                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
-                {
-                    legendsColumnIndex = i;
-                    break;
-                }
-            }
-
-            // Dictionary to store Y-axis configuration
-            Dictionary<string, Dictionary<string, string>> yAxisConfigs = new Dictionary<string, Dictionary<string, string>>();
 
             // Extract formatting options if available
             if (instructions.ContainsKey("formatting"))
@@ -1055,249 +950,177 @@ namespace WebApplication6
                         int.TryParse(tensionStr, out tension);
                     }
                 }
+            }
 
-                // Parse Y-axis configurations for multiple axes
-                if (multiAxis && formattingStr.Contains("yAxis:"))
+            // Get column indices
+            int legendsColumnIndex = -1;
+            Dictionary<string, int> seriesColumnIndices = new Dictionary<string, int>();
+            int groupByColumnIndex = -1;
+
+            // Find legend column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
                 {
-                    int yAxisStart = formattingStr.IndexOf("yAxis:") + 6;
-                    int yAxisEnd = FindMatchingClosingBrace(formattingStr, yAxisStart);
-
-                    if (yAxisEnd > yAxisStart)
-                    {
-                        string yAxisStr = formattingStr.Substring(yAxisStart, yAxisEnd - yAxisStart).Trim();
-
-                        // Process each Y-axis configuration
-                        int pos = 0;
-                        while (pos < yAxisStr.Length)
-                        {
-                            int idStart = yAxisStr.IndexOf("id:", pos) + 3;
-                            if (idStart < 3) break; // No more IDs found
-
-                            int idEnd = yAxisStr.IndexOf(",", idStart);
-                            if (idEnd == -1) break;
-
-                            string axisId = yAxisStr.Substring(idStart, idEnd - idStart).Trim().Trim('"');
-
-                            int configStart = yAxisStr.IndexOf("{", idEnd) + 1;
-                            int configEnd = FindMatchingClosingBrace(yAxisStr, configStart - 1);
-
-                            if (configEnd > configStart)
-                            {
-                                string configStr = yAxisStr.Substring(configStart, configEnd - configStart).Trim();
-                                Dictionary<string, string> axisConfig = new Dictionary<string, string>();
-
-                                // Parse position
-                                int positionStart = configStr.IndexOf("position:") + 9;
-                                if (positionStart > 9)
-                                {
-                                    int positionEnd = configStr.IndexOf(",", positionStart);
-                                    if (positionEnd == -1) positionEnd = configStr.Length;
-                                    string position = configStr.Substring(positionStart, positionEnd - positionStart).Trim().Trim('"');
-                                    axisConfig["position"] = position;
-                                }
-
-                                // Parse title
-                                int titleStart = configStr.IndexOf("title:") + 6;
-                                if (titleStart > 6)
-                                {
-                                    int titleEnd = configStr.IndexOf(",", titleStart);
-                                    if (titleEnd == -1) titleEnd = configStr.Length;
-                                    string title = configStr.Substring(titleStart, titleEnd - titleStart).Trim().Trim('"');
-                                    axisConfig["title"] = title;
-                                }
-
-                                // Parse color
-                                int colorStart = configStr.IndexOf("color:") + 6;
-                                if (colorStart > 6)
-                                {
-                                    int colorEnd = configStr.IndexOf(",", colorStart);
-                                    if (colorEnd == -1) colorEnd = configStr.Length;
-                                    string color = configStr.Substring(colorStart, colorEnd - colorStart).Trim().Trim('"');
-                                    axisConfig["color"] = color;
-                                }
-
-                                // Store the configuration
-                                yAxisConfigs[axisId] = axisConfig;
-
-                                // Move to the next axis configuration
-                                pos = configEnd + 1;
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-                    }
+                    legendsColumnIndex = i;
+                    break;
                 }
             }
 
-            // Extract labels for x-axis
-            List<string> labels = new List<string>();
-            foreach (DataRow row in data.Rows)
+            // Find series column indices
+            foreach (string seriesName in seriesColumns)
             {
-                labels.Add(row[legendsColumnIndex].ToString());
-            }
-
-            // Prepare datasets for each series
-            List<string> datasets = new List<string>();
-            HashSet<string> usedYAxisIds = new HashSet<string>();
-
-            for (int i = 0; i < seriesColumns.Count; i++)
-            {
-                string seriesName = seriesColumns[i];
-                int seriesColumnIndex = -1;
-
-                // Find column index by name
-                for (int j = 0; j < data.Columns.Count; j++)
+                for (int i = 0; i < data.Columns.Count; i++)
                 {
-                    if (data.Columns[j].ColumnName.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
+                    if (data.Columns[i].ColumnName.Equals(seriesName, StringComparison.OrdinalIgnoreCase))
                     {
-                        seriesColumnIndex = j;
+                        seriesColumnIndices[seriesName] = i;
                         break;
                     }
                 }
+            }
 
-                if (seriesColumnIndex == -1) continue; // Skip if column not found
+            // Find groupBy column index if specified
+            if (!string.IsNullOrEmpty(groupByColumn))
+            {
+                for (int i = 0; i < data.Columns.Count; i++)
+                {
+                    if (data.Columns[i].ColumnName.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase))
+                    {
+                        groupByColumnIndex = i;
+                        break;
+                    }
+                }
+            }
 
-                // Extract values for this series
-                List<double> values = new List<double>();
+            // Extract labels for x-axis and prepare datasets
+            List<string> labels = new List<string>();
+            List<string> datasets = new List<string>();
+
+            // Standard chart (no groupBy)
+            if (string.IsNullOrEmpty(groupByColumn) || groupByColumnIndex == -1)
+            {
+                // Extract labels
                 foreach (DataRow row in data.Rows)
                 {
-                    values.Add(Convert.ToDouble(row[seriesColumnIndex]));
+                    labels.Add(row[legendsColumnIndex].ToString());
                 }
 
-                // Use current series color from the palette
-                string backgroundColor = backgroundColors[i % backgroundColors.Length];
-                string borderColor = borderColors[i % borderColors.Length];
-
-                // Custom colors can be added from formatting
-                if (instructions.ContainsKey("formatting"))
+                // Create a dataset for each series
+                int seriesIndex = 0;
+                foreach (string seriesName in seriesColumns)
                 {
-                    string formattingStr = instructions["formatting"];
+                    if (!seriesColumnIndices.ContainsKey(seriesName)) continue;
 
-                    if (formattingStr.Contains($"backgroundColor{i}:"))
+                    int colIndex = seriesColumnIndices[seriesName];
+                    List<double> values = new List<double>();
+
+                    foreach (DataRow row in data.Rows)
                     {
-                        int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
-                        int end = formattingStr.IndexOf(",", start);
-                        if (end == -1) end = formattingStr.IndexOf("}", start);
-                        if (end > start)
-                        {
-                            backgroundColor = formattingStr.Substring(start, end - start).Trim();
-                            if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
-                                backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
-                        }
+                        values.Add(Convert.ToDouble(row[colIndex]));
                     }
 
-                    if (formattingStr.Contains($"borderColor{i}:"))
-                    {
-                        int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
-                        int end = formattingStr.IndexOf(",", start);
-                        if (end == -1) end = formattingStr.IndexOf("}", start);
-                        if (end > start)
-                        {
-                            borderColor = formattingStr.Substring(start, end - start).Trim();
-                            if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
-                                borderColor = borderColor.Substring(1, borderColor.Length - 2);
-                        }
-                    }
-                }
+                    // Create dataset
+                    string color = colors[seriesIndex % colors.Length];
+                    string dataset = $@"{{
+                label: '{seriesName}',
+                data: {JsonConvert.SerializeObject(values)},
+                backgroundColor: '{color}',
+                borderColor: '{color}',
+                fill: false,
+                tension: {tension / 100.0},
+                pointRadius: {(showPoints ? "3" : "0")}
+            }}";
 
-                // Determine Y-axis for this series
-                string yAxisId = "y";
-                if (multiAxis && seriesYAxisMap.ContainsKey(seriesName))
+                    datasets.Add(dataset);
+                    seriesIndex++;
+                }
+            }
+            // GroupBy chart
+            else
+            {
+                // Get unique legends for x-axis
+                HashSet<string> uniqueLegends = new HashSet<string>();
+                foreach (DataRow row in data.Rows)
                 {
-                    yAxisId = seriesYAxisMap[seriesName];
-                    usedYAxisIds.Add(yAxisId);
+                    uniqueLegends.Add(row[legendsColumnIndex].ToString());
+                }
+                labels = uniqueLegends.OrderBy(l => l).ToList();
+
+                // Get unique categories from groupBy column
+                HashSet<string> uniqueCategories = new HashSet<string>();
+                foreach (DataRow row in data.Rows)
+                {
+                    uniqueCategories.Add(row[groupByColumnIndex].ToString());
                 }
 
-                // Create dataset JSON for this series
-                string dataset = $@"{{
-            label: '{seriesName}',
-            data: {JsonConvert.SerializeObject(values)},
-            backgroundColor: '{backgroundColor}',
-            borderColor: '{borderColor}',
-            borderWidth: 1,
-            fill: false,
-            pointRadius: {(showPoints ? "3" : "0")},
-            tension: {tension / 100.0},
-            yAxisID: '{yAxisId}'
-        }}";
+                // For each series column
+                int seriesIndex = 0;
+                foreach (string seriesName in seriesColumns)
+                {
+                    if (!seriesColumnIndices.ContainsKey(seriesName)) continue;
 
-                datasets.Add(dataset);
+                    int colIndex = seriesColumnIndices[seriesName];
+
+                    // For each category, create a separate dataset
+                    int categoryIndex = 0;
+                    foreach (string category in uniqueCategories.OrderBy(c => c))
+                    {
+                        // Create a mapping of legend to value for this category
+                        Dictionary<string, double> valueMap = new Dictionary<string, double>();
+
+                        // Initialize all labels with zero
+                        foreach (string label in labels)
+                        {
+                            valueMap[label] = 0;
+                        }
+
+                        // Fill in values from matching rows
+                        foreach (DataRow row in data.Rows)
+                        {
+                            if (row[groupByColumnIndex].ToString() == category)
+                            {
+                                string legend = row[legendsColumnIndex].ToString();
+                                valueMap[legend] = Convert.ToDouble(row[colIndex]);
+                            }
+                        }
+
+                        // Extract values in label order
+                        List<double> values = new List<double>();
+                        foreach (string label in labels)
+                        {
+                            values.Add(valueMap[label]);
+                        }
+
+                        // Select color for this dataset
+                        string color = colors[(seriesIndex + categoryIndex) % colors.Length];
+
+                        // Create dataset label (combine series and category if multiple series)
+                        string datasetLabel = seriesColumns.Count > 1
+                            ? $"{seriesName} - {category}"
+                            : category;
+
+                        // Create dataset
+                        string dataset = $@"{{
+                    label: '{datasetLabel}',
+                    data: {JsonConvert.SerializeObject(values)},
+                    backgroundColor: '{color}',
+                    borderColor: '{color}',
+                    fill: false,
+                    tension: {tension / 100.0},
+                    pointRadius: {(showPoints ? "3" : "0")}
+                }}";
+
+                        datasets.Add(dataset);
+                        categoryIndex++;
+                    }
+
+                    seriesIndex++;
+                }
             }
 
             // Create the HTML container for the chart
             string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
-
-            // Build the scales configuration for Chart.js
-            string scalesConfig = "scales: {";
-
-            // Add x-axis configuration
-            scalesConfig += @"
-        x: {
-            display: true
-        },";
-
-            // Add primary y-axis
-            scalesConfig += @"
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            beginAtZero: true,
-            title: {
-                display: true,
-                text: 'Primary'
-            }
-        },";
-
-            // Add additional y-axes if needed
-            if (multiAxis)
-            {
-                foreach (string axisId in usedYAxisIds)
-                {
-                    if (axisId == "y") continue; // Skip the primary axis
-
-                    string position = "right";
-                    string title = axisId;
-                    string color = null;
-
-                    if (yAxisConfigs.ContainsKey(axisId))
-                    {
-                        var config = yAxisConfigs[axisId];
-                        if (config.ContainsKey("position")) position = config["position"];
-                        if (config.ContainsKey("title")) title = config["title"];
-                        if (config.ContainsKey("color")) color = config["color"];
-                    }
-
-                    scalesConfig += $@"
-        {axisId}: {{
-            type: 'linear',
-            display: true,
-            position: '{position}',
-            beginAtZero: true,
-            grid: {{
-                drawOnChartArea: false
-            }},
-            title: {{
-                display: true,
-                text: '{title}'
-            }}";
-
-                    if (!string.IsNullOrEmpty(color))
-                    {
-                        scalesConfig += $@",
-            ticks: {{
-                color: '{color}'
-            }}";
-                    }
-
-                    scalesConfig += @"
-        },";
-                }
-            }
-
-            scalesConfig += "}";
 
             // Add the Chart.js initialization script
             html += $@"
@@ -1313,7 +1136,15 @@ namespace WebApplication6
             options: {{
                 responsive: true,
                 maintainAspectRatio: false,
-                {scalesConfig},
+                scales: {{
+                    x: {{
+                        display: true
+                    }},
+                    y: {{
+                        display: true,
+                        beginAtZero: true
+                    }}
+                }},
                 plugins: {{
                     legend: {{
                         display: true,
