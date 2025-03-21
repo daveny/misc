@@ -177,6 +177,8 @@ namespace WebApplication6
                     return RenderBarChart(data, instructions);
                 case "linechart":
                     return RenderLineChart(data, instructions);
+                case "piechart":
+                    return RenderPieChart(data, instructions);
                 default:
                     return RenderDataTable(data, instructions);
             }
@@ -396,6 +398,412 @@ namespace WebApplication6
 
             return options;
         }
+
+        // Add this method to your ReportController class for pie chart support
+        private string RenderPieChart(DataTable data, Dictionary<string, string> instructions)
+        {
+            // Create a unique ID for the chart
+            string chartId = "piechart_" + Guid.NewGuid().ToString("N");
+
+            // Default configuration
+            string chartTitle = "Pie Chart";
+            bool showLegend = true;
+            bool showLabels = true;
+            bool isDoughnut = false;
+
+            // Define default colors to cycle through
+            string[] backgroundColors = new string[]
+            {
+        "rgba(75, 192, 192, 0.7)",
+        "rgba(255, 99, 132, 0.7)",
+        "rgba(54, 162, 235, 0.7)",
+        "rgba(255, 206, 86, 0.7)",
+        "rgba(153, 102, 255, 0.7)",
+        "rgba(255, 159, 64, 0.7)",
+        "rgba(201, 203, 207, 0.7)",
+        "rgba(100, 149, 237, 0.7)"
+            };
+
+            string[] borderColors = new string[]
+            {
+        "rgba(75, 192, 192, 1)",
+        "rgba(255, 99, 132, 1)",
+        "rgba(54, 162, 235, 1)",
+        "rgba(255, 206, 86, 1)",
+        "rgba(153, 102, 255, 1)",
+        "rgba(255, 159, 64, 1)",
+        "rgba(201, 203, 207, 1)",
+        "rgba(100, 149, 237, 1)"
+            };
+
+            // Get series column name (value column for the pie chart)
+            string seriesColumn = "";
+            if (instructions.ContainsKey("series"))
+            {
+                string seriesValue = instructions["series"];
+                if (seriesValue.StartsWith("[") && seriesValue.EndsWith("]"))
+                {
+                    // For pie charts, we only use the first series (can't display multiple series in one pie)
+                    seriesValue = seriesValue.Substring(1, seriesValue.Length - 2);
+                    string firstSeries = seriesValue.Split(',')
+                        .Select(s => s.Trim().Trim('"', '\''))
+                        .FirstOrDefault();
+
+                    if (!string.IsNullOrEmpty(firstSeries))
+                    {
+                        seriesColumn = firstSeries;
+                    }
+                }
+                else
+                {
+                    seriesColumn = seriesValue;
+                }
+            }
+            else if (data.Columns.Count > 1)
+            {
+                // Default to second column
+                seriesColumn = data.Columns[1].ColumnName;
+            }
+
+            // Check if we need to group by a column
+            string groupByColumn = null;
+            if (instructions.ContainsKey("groupBy"))
+            {
+                groupByColumn = instructions["groupBy"];
+            }
+
+            // Get legends (defaults to first column for labels)
+            string legendsColumn = data.Columns[0].ColumnName;
+            if (instructions.ContainsKey("legends"))
+            {
+                string legendsValue = instructions["legends"];
+                if (legendsValue.StartsWith("[") && legendsValue.EndsWith("]"))
+                {
+                    // For pie charts, we only use the first legend
+                    legendsValue = legendsValue.Substring(1, legendsValue.Length - 2);
+                    string firstLegend = legendsValue.Split(',')
+                        .Select(s => s.Trim().Trim('"', '\''))
+                        .FirstOrDefault();
+
+                    if (!string.IsNullOrEmpty(firstLegend))
+                    {
+                        legendsColumn = firstLegend;
+                    }
+                }
+                else
+                {
+                    legendsColumn = legendsValue;
+                }
+            }
+
+            // Extract formatting options if available
+            if (instructions.ContainsKey("formatting"))
+            {
+                string formattingStr = instructions["formatting"];
+
+                if (formattingStr.Contains("title:"))
+                {
+                    int start = formattingStr.IndexOf("title:") + 6;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        chartTitle = formattingStr.Substring(start, end - start).Trim();
+                        if (chartTitle.StartsWith("\"") && chartTitle.EndsWith("\""))
+                            chartTitle = chartTitle.Substring(1, chartTitle.Length - 2);
+                    }
+                }
+
+                if (formattingStr.Contains("showLegend:"))
+                {
+                    int start = formattingStr.IndexOf("showLegend:") + 11;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showLegendStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showLegendStr, out showLegend);
+                    }
+                }
+
+                if (formattingStr.Contains("showLabels:"))
+                {
+                    int start = formattingStr.IndexOf("showLabels:") + 11;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showLabelsStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showLabelsStr, out showLabels);
+                    }
+                }
+
+                if (formattingStr.Contains("doughnut:"))
+                {
+                    int start = formattingStr.IndexOf("doughnut:") + 9;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string doughnutStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(doughnutStr, out isDoughnut);
+                    }
+                }
+
+                // Custom colors for each slice can also be added in formatting
+            }
+
+            // Get column indices
+            int legendsColumnIndex = -1;
+            int seriesColumnIndex = -1;
+            int groupByColumnIndex = -1;
+
+            // Find legend column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
+                {
+                    legendsColumnIndex = i;
+                    break;
+                }
+            }
+
+            // Find series column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(seriesColumn, StringComparison.OrdinalIgnoreCase))
+                {
+                    seriesColumnIndex = i;
+                    break;
+                }
+            }
+
+            // Find groupBy column index if specified
+            if (!string.IsNullOrEmpty(groupByColumn))
+            {
+                for (int i = 0; i < data.Columns.Count; i++)
+                {
+                    if (data.Columns[i].ColumnName.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase))
+                    {
+                        groupByColumnIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // Variables to store data for the chart
+            List<string> labels = new List<string>();
+            List<double> values = new List<double>();
+            List<string> backgroundColorList = new List<string>();
+            List<string> borderColorList = new List<string>();
+
+            // Different behavior based on whether we're grouping or not
+            if (!string.IsNullOrEmpty(groupByColumn) && groupByColumnIndex != -1)
+            {
+                // We're generating a multi-chart presentation - one pie chart per groupBy value
+
+                // Get unique group values
+                List<string> uniqueGroups = data.AsEnumerable()
+                    .Select(row => row[groupByColumnIndex].ToString())
+                    .Distinct()
+                    .OrderBy(g => g)
+                    .ToList();
+
+                // Create a container div for all charts
+                string html = $"<div style='display: flex; flex-wrap: wrap; justify-content: center;'>";
+
+                // Generate one pie chart for each group
+                for (int groupIndex = 0; groupIndex < uniqueGroups.Count; groupIndex++)
+                {
+                    string groupValue = uniqueGroups[groupIndex];
+                    string groupChartId = $"{chartId}_{groupIndex}";
+
+                    // Filter data for this group
+                    var groupData = data.AsEnumerable()
+                        .Where(row => row[groupByColumnIndex].ToString() == groupValue)
+                        .ToList();
+
+                    // Get labels and values for this group
+                    labels.Clear();
+                    values.Clear();
+                    backgroundColorList.Clear();
+                    borderColorList.Clear();
+
+                    for (int i = 0; i < groupData.Count; i++)
+                    {
+                        DataRow row = groupData[i];
+                        labels.Add(row[legendsColumnIndex].ToString());
+                        values.Add(Convert.ToDouble(row[seriesColumnIndex]));
+
+                        // Use the color palette with cycling
+                        backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
+                        borderColorList.Add(borderColors[i % borderColors.Length]);
+                    }
+
+                    // Create chart div for this group
+                    html += $"<div style='flex: 1; min-width: 300px; max-width: 500px; margin: 10px;'>";
+                    html += $"<h3 style='text-align: center;'>{groupValue}</h3>";
+                    html += $"<div style='height: 300px;'><canvas id='{groupChartId}'></canvas></div>";
+
+                    // Add the Chart.js initialization script for this group
+                    html += $@"
+            <script>
+                $(document).ready(function() {{
+                    var ctx = document.getElementById('{groupChartId}').getContext('2d');
+                    var chart = new Chart(ctx, {{
+                        type: '{(isDoughnut ? "doughnut" : "pie")}',
+                        data: {{
+                            labels: {JsonConvert.SerializeObject(labels)},
+                            datasets: [{{
+                                data: {JsonConvert.SerializeObject(values)},
+                                backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
+                                borderColor: {JsonConvert.SerializeObject(borderColorList)},
+                                borderWidth: 1
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{
+                                    display: {showLegend.ToString().ToLower()},
+                                    position: 'bottom'
+                                }},
+                                title: {{
+                                    display: true,
+                                    text: '{chartTitle} - {groupValue}',
+                                    font: {{
+                                        size: 14
+                                    }}
+                                }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: function(context) {{
+                                            var label = context.label || '';
+                                            var value = context.raw || 0;
+                                            var total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            var percentage = Math.round((value / total) * 100);
+                                            return label + ': ' + value + ' (' + percentage + '%)';
+                                        }}
+                                    }}
+                                }}
+                            }},
+                            elements: {{
+                                arc: {{
+                                    borderWidth: 1
+                                }}
+                            }}
+                        }}
+                    }});
+                }});
+            </script>";
+
+                    html += "</div>"; // Close the chart div
+                }
+
+                html += "</div>"; // Close the container div
+                return html;
+            }
+            else
+            {
+                // Standard single pie chart
+                for (int i = 0; i < data.Rows.Count; i++)
+                {
+                    DataRow row = data.Rows[i];
+                    labels.Add(row[legendsColumnIndex].ToString());
+                    values.Add(Convert.ToDouble(row[seriesColumnIndex]));
+
+                    // Use the color palette with cycling
+                    backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
+                    borderColorList.Add(borderColors[i % borderColors.Length]);
+
+                    // Custom colors can be added from formatting
+                    if (instructions.ContainsKey("formatting"))
+                    {
+                        string formattingStr = instructions["formatting"];
+
+                        if (formattingStr.Contains($"backgroundColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                string backgroundColor = formattingStr.Substring(start, end - start).Trim();
+                                if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
+                                    backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
+                                backgroundColorList[i] = backgroundColor;
+                            }
+                        }
+
+                        if (formattingStr.Contains($"borderColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                string borderColor = formattingStr.Substring(start, end - start).Trim();
+                                if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
+                                    borderColor = borderColor.Substring(1, borderColor.Length - 2);
+                                borderColorList[i] = borderColor;
+                            }
+                        }
+                    }
+                }
+
+                // Create the HTML container for the chart
+                string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
+
+                // Add the Chart.js initialization script
+                html += $@"
+<script>
+    $(document).ready(function() {{
+        var ctx = document.getElementById('{chartId}').getContext('2d');
+        var myPieChart = new Chart(ctx, {{
+            type: '{(isDoughnut ? "doughnut" : "pie")}',
+            data: {{
+                labels: {JsonConvert.SerializeObject(labels)},
+                datasets: [{{
+                    data: {JsonConvert.SerializeObject(values)},
+                    backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
+                    borderColor: {JsonConvert.SerializeObject(borderColorList)},
+                    borderWidth: 1
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{
+                        display: {showLegend.ToString().ToLower()},
+                        position: 'right'
+                    }},
+                    title: {{
+                        display: true,
+                        text: '{chartTitle}'
+                    }},
+                    tooltip: {{
+                        callbacks: {{
+                            label: function(context) {{
+                                var label = context.label || '';
+                                var value = context.raw || 0;
+                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                var percentage = Math.round((value / total) * 100);
+                                return label + ': ' + value + ' (' + percentage + '%)';
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }});
+    }});
+</script>";
+
+                return html;
+            }
+        }
+
 
         // This is a complete implementation of the BarChart method with the fix for duplicate labels
 
