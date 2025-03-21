@@ -399,7 +399,7 @@ namespace WebApplication6
             return options;
         }
 
-        // Enhanced RenderPieChart method with data value display
+        // Complete fixed RenderPieChart implementation
         private string RenderPieChart(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the chart
@@ -408,11 +408,11 @@ namespace WebApplication6
             // Default configuration
             string chartTitle = "Pie Chart";
             bool showLegend = true;
-            bool showLabels = true;
             bool isDoughnut = false;
             bool showValues = true;           // Show data values on the chart by default
             bool showPercentages = true;      // Show percentages on the chart by default
             string valuePosition = "legend";  // Where to display values: 'inside', 'outside', or 'legend'
+            int chartPadding = 50;           // Increased padding to accommodate labels
 
             // Define default colors to cycle through
             string[] backgroundColors = new string[]
@@ -529,18 +529,6 @@ namespace WebApplication6
                     }
                 }
 
-                if (formattingStr.Contains("showLabels:"))
-                {
-                    int start = formattingStr.IndexOf("showLabels:") + 11;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string showLabelsStr = formattingStr.Substring(start, end - start).Trim();
-                        bool.TryParse(showLabelsStr, out showLabels);
-                    }
-                }
-
                 if (formattingStr.Contains("doughnut:"))
                 {
                     int start = formattingStr.IndexOf("doughnut:") + 9;
@@ -593,6 +581,19 @@ namespace WebApplication6
                         {
                             valuePosition = valuePositionStr;
                         }
+                    }
+                }
+
+                // Parse chart padding if specified
+                if (formattingStr.Contains("chartPadding:"))
+                {
+                    int start = formattingStr.IndexOf("chartPadding:") + 13;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string paddingStr = formattingStr.Substring(start, end - start).Trim();
+                        int.TryParse(paddingStr, out chartPadding);
                     }
                 }
             }
@@ -653,8 +654,8 @@ namespace WebApplication6
                     .OrderBy(g => g)
                     .ToList();
 
-                // Create a container div for all charts
-                string html = $"<div style='display: flex; flex-wrap: wrap; justify-content: center;'>";
+                // Create a container div for all charts - with flexible layout
+                string html = $"<div style='display: flex; flex-wrap: wrap; justify-content: center; width:100%;'>";
 
                 // Generate one pie chart for each group
                 for (int groupIndex = 0; groupIndex < uniqueGroups.Count; groupIndex++)
@@ -684,108 +685,151 @@ namespace WebApplication6
                         borderColorList.Add(borderColors[i % borderColors.Length]);
                     }
 
-                    // Create chart div for this group
+                    // Create chart div for this group with fixed width to ensure consistent sizing
                     html += $"<div style='flex: 1; min-width: 300px; max-width: 500px; margin: 10px;'>";
                     html += $"<h3 style='text-align: center;'>{groupValue}</h3>";
                     html += $"<div style='height: 300px;'><canvas id='{groupChartId}'></canvas></div>";
 
                     // Add the Chart.js initialization script for this group
                     html += $@"
-            <script>
-                $(document).ready(function() {{
-                    var ctx = document.getElementById('{groupChartId}').getContext('2d');
-                    var chart = new Chart(ctx, {{
-                        type: '{(isDoughnut ? "doughnut" : "pie")}',
-                        data: {{
-                            labels: {JsonConvert.SerializeObject(labels)},
-                            datasets: [{{
-                                data: {JsonConvert.SerializeObject(values)},
-                                backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
-                                borderColor: {JsonConvert.SerializeObject(borderColorList)},
-                                borderWidth: 1
-                            }}]
-                        }},
-                        options: {{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {{
-                                legend: {{
-                                    display: {showLegend.ToString().ToLower()},
-                                    position: 'right',
-                                    labels: {{
-                                        generateLabels: function(chart) {{
-                                            // Get the default legend items
-                                            const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
-                                            const labels = original.call(this, chart);
-                                            
-                                            // Only modify if showing values or percentages
-                                            if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
-                                                // Calculate total for percentages
-                                                const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                                
-                                                // Modify the text to include values/percentages
-                                                labels.forEach((label, i) => {{
-                                                    const value = chart.data.datasets[0].data[i];
-                                                    const percentage = Math.round((value / total) * 100);
-                                                    
-                                                    let newText = label.text;
-                                                    if ({showValues.ToString().ToLower()}) {{
-                                                        newText += ' - ' + value.toLocaleString();
-                                                    }}
-                                                    if ({showPercentages.ToString().ToLower()}) {{
-                                                        newText += ' (' + percentage + '%)';
-                                                    }}
-                                                    label.text = newText;
-                                                }});
-                                            }}
-                                            
-                                            return labels;
-                                        }}
-                                    }}
-                                }},
-                                tooltip: {{
-                                    callbacks: {{
-                                        label: function(context) {{
-                                            var label = context.label || '';
-                                            var value = context.raw || 0;
-                                            var total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                            var percentage = Math.round((value / total) * 100);
-                                            return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
-                                        }}
-                                    }}
-                                }},
-                                datalabels: {{
-                                    display: {((showValues || showPercentages) && valuePosition != "legend").ToString().ToLower()},
-                                    color: 'white',
-                                    font: {{
-                                        weight: 'bold',
-                                        size: 11
-                                    }},
-                                    textAlign: 'center',
-                                    textBaseline: 'middle',
-                                    formatter: function(value, context) {{
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+<script>
+    $(document).ready(function() {{
+        var ctx = document.getElementById('{groupChartId}').getContext('2d');
+        var myPieChart = new Chart(ctx, {{
+            type: '{(isDoughnut ? "doughnut" : "pie")}',
+            data: {{
+                labels: {JsonConvert.SerializeObject(labels)},
+                datasets: [{{
+                    data: {JsonConvert.SerializeObject(values)},
+                    backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
+                    borderColor: {JsonConvert.SerializeObject(borderColorList)},
+                    borderWidth: 1
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {{
+                    padding: {chartPadding}
+                }},
+                plugins: {{
+                    legend: {{
+                        display: {showLegend.ToString().ToLower()},
+                        position: 'right',
+                        labels: {{
+                            generateLabels: function(chart) {{
+                                // Get the default legend items
+                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                const labels = original.call(this, chart);
+                                
+                                // Only modify if showing values or percentages in legend
+                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
+                                    // Calculate total for percentages
+                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    
+                                    // Modify the text to include values/percentages
+                                    labels.forEach((label, i) => {{
+                                        const value = chart.data.datasets[0].data[i];
                                         const percentage = Math.round((value / total) * 100);
                                         
-                                        let result = '';
+                                        let newText = label.text;
                                         if ({showValues.ToString().ToLower()}) {{
-                                            result += value.toLocaleString();
+                                            newText += ' - ' + value.toLocaleString();
                                         }}
                                         if ({showPercentages.ToString().ToLower()}) {{
-                                            if (result) result += ' ';
-                                            result += '(' + percentage + '%)';
+                                            newText += ' (' + percentage + '%)';
                                         }}
-                                        return result;
-                                    }},
-                                    anchor: '{(valuePosition == "inside" ? "center" : "end")}',
-                                    align: '{(valuePosition == "inside" ? "center" : "end")}',
-                                    offset: {(valuePosition == "inside" ? "0" : "10")}
+                                        label.text = newText;
+                                    }});
                                 }}
+                                
+                                return labels;
                             }}
                         }}
-                    }});
-                }});
-            </script>";
+                    }},
+                    tooltip: {{
+                        callbacks: {{
+                            label: function(context) {{
+                                var label = context.label || '';
+                                var value = context.raw || 0;
+                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                var percentage = Math.round((value / total) * 100);
+                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
+                            }}
+                        }}
+                    }}
+                }}
+            }},
+            plugins: [
+                {{
+                    id: 'insideLabels',
+                    afterDraw: function(chart) {{
+                        // Only run this plugin for inside position with values or percentages
+                        var valuePosition = '{valuePosition}';
+                        var showValues = {showValues.ToString().ToLower()};
+                        var showPercentages = {showPercentages.ToString().ToLower()};
+                        
+                        if (valuePosition !== 'inside' || (!showValues && !showPercentages)) {{
+                            return;
+                        }}
+                        
+                        var ctx = chart.ctx;
+                        ctx.save();
+                        
+                        var total = 0;
+                        for (var i = 0; i < chart.data.datasets[0].data.length; i++) {{
+                            total += chart.data.datasets[0].data[i];
+                        }}
+                        
+                        for (var i = 0; i < chart.getDatasetMeta(0).data.length; i++) {{
+                            var arc = chart.getDatasetMeta(0).data[i];
+                            var value = chart.data.datasets[0].data[i];
+                            
+                            if (value === 0) continue; // Skip zero values
+                            
+                            // Calculate percentage
+                            var percentage = Math.round((value / total) * 100);
+                            
+                            // Calculate display position
+                            var midAngle = (arc.startAngle + arc.endAngle) / 2;
+                            var radius = arc.outerRadius * 0.6;
+                            
+                            // Position based on slice size
+                            var slicePercentage = value / total;
+                            if (slicePercentage < 0.1) {{ // Small slice
+                                radius = arc.outerRadius * 0.5;
+                            }} else if (slicePercentage > 0.25) {{ // Large slice
+                                radius = arc.outerRadius * 0.7;
+                            }}
+                            
+                            var x = arc.x + Math.cos(midAngle) * radius;
+                            var y = arc.y + Math.sin(midAngle) * radius;
+                            
+                            // Format text
+                            var displayText = '';
+                            if (showValues) {{
+                                displayText += value.toLocaleString();
+                            }}
+                            if (showPercentages) {{
+                                if (displayText) displayText += ' ';
+                                displayText += '(' + percentage + '%)';
+                            }}
+                            
+                            // Draw text
+                            ctx.font = 'bold 12px Arial';
+                            ctx.fillStyle = 'white';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(displayText, x, y);
+                        }}
+                        
+                        ctx.restore();
+                    }}
+                }}
+            ]
+        }});
+    }});
+</script>";
 
                     html += "</div>"; // Close the chart div
                 }
@@ -842,86 +886,13 @@ namespace WebApplication6
                 }
 
                 // Create the HTML container for the chart
-                string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
+                // Keep the height the same but adjust positioning to ensure labels fit
+                string html = $"<div style='width:100%; height:400px; position: relative;'><canvas id='{chartId}'></canvas></div>";
 
                 // Add the Chart.js initialization script
                 html += $@"
 <script>
     $(document).ready(function() {{
-        // Load Chart.js DataLabels Plugin if needed
-        if (('{valuePosition}' === 'inside' || '{valuePosition}' === 'outside') && 
-            {(showValues || showPercentages).ToString().ToLower()} &&
-            typeof Chart !== 'undefined' && 
-            !Chart.registry.getPlugin('datalabels')) {{
-            
-            // Define a simplified version of the Chart.js DataLabels plugin
-            const ChartDataLabels = {{
-                id: 'datalabels',
-                afterDatasetsDraw: function(chart) {{
-                    const ctx = chart.ctx;
-                    
-                    chart.data.datasets.forEach((dataset, datasetIndex) => {{
-                        const meta = chart.getDatasetMeta(datasetIndex);
-                        
-                        if (!meta.hidden) {{
-                            meta.data.forEach((element, index) => {{
-                                const dataValue = dataset.data[index];
-                                if (dataValue === 0) return; // Skip zero values
-                                
-                                // Calculate percentage
-                                const total = dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = Math.round((dataValue / total) * 100);
-                                
-                                // Format display text
-                                let displayText = '';
-                                if ({showValues.ToString().ToLower()}) {{
-                                    displayText += dataValue.toLocaleString();
-                                }}
-                                if ({showPercentages.ToString().ToLower()}) {{
-                                    if (displayText) displayText += ' ';
-                                    displayText += '(' + percentage + '%)';
-                                }}
-                                
-                                // Get position
-                                let position;
-                                if ('{valuePosition}' === 'inside') {{
-                                    position = element.getCenterPoint();
-                                }} else {{
-                                    // Outside - calculate position at the end of the slice
-                                    const angle = element.startAngle + (element.endAngle - element.startAngle) / 2;
-                                    const radius = element.outerRadius * 1.2;
-                                    position = {{
-                                        x: element.x + Math.cos(angle) * radius,
-                                        y: element.y + Math.sin(angle) * radius
-                                    }};
-                                }}
-                                
-                                // Draw text
-                                ctx.font = 'bold 12px Arial';
-                                ctx.fillStyle = '{valuePosition}' === 'inside' ? 'white' : '#333';
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
-                                
-                                if ('{valuePosition}' === 'outside') {{
-                                    // Add background for outside labels
-                                    const width = ctx.measureText(displayText).width + 6;
-                                    const height = 16;
-                                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                                    ctx.fillRect(position.x - width/2, position.y - height/2, width, height);
-                                    ctx.fillStyle = '#333';
-                                }}
-                                
-                                ctx.fillText(displayText, position.x, position.y);
-                            }});
-                        }}
-                    }});
-                }}
-            }};
-            
-            // Register plugin
-            Chart.register(ChartDataLabels);
-        }}
-        
         var ctx = document.getElementById('{chartId}').getContext('2d');
         var myPieChart = new Chart(ctx, {{
             type: '{(isDoughnut ? "doughnut" : "pie")}',
@@ -937,6 +908,13 @@ namespace WebApplication6
             options: {{
                 responsive: true,
                 maintainAspectRatio: false,
+                
+                // Added layout padding to ensure outside labels fit within canvas
+                layout: {{
+                    padding: {chartPadding}
+                }},
+                
+                // Make the chart slightly smaller to accommodate labels
                 plugins: {{
                     legend: {{
                         display: {showLegend.ToString().ToLower()},
@@ -947,7 +925,7 @@ namespace WebApplication6
                                 const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
                                 const labels = original.call(this, chart);
                                 
-                                // Only modify if showing values or percentages
+                                // Only modify if showing values or percentages in legend
                                 if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
                                     // Calculate total for percentages
                                     const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
@@ -984,7 +962,77 @@ namespace WebApplication6
                         }}
                     }}
                 }}
-            }}
+            }},
+            plugins: [{{
+                id: 'valueLabels',
+                afterDraw: function(chart) {{
+                    // Only show labels if not legend mode and we're showing values or percentages
+                    if ('{valuePosition}' === 'legend' || !({(showValues || showPercentages).ToString().ToLower()})) {{
+                        return;
+                    }}
+                    
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    
+                    // Get the total for percentage calculations
+                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                    
+                    chart.getDatasetMeta(0).data.forEach((arc, i) => {{
+                        const value = chart.data.datasets[0].data[i];
+                        if (value === 0) return; // Skip zero values
+                        
+                        // Get position based on mode
+                        let position = {{x: arc.x, y: arc.y}};
+                        if ('{valuePosition}' === 'outside') {{
+                            const angle = (arc.startAngle + arc.endAngle) / 2;
+                            
+                            // Use a smaller radius multiplier to keep labels closer to the pie
+                            // This helps prevent labels from going outside the canvas
+                            const radius = arc.outerRadius * 1.1;
+                            position.x += Math.cos(angle) * radius;
+                            position.y += Math.sin(angle) * radius;
+                            
+                            // Adjust vertical positioning to prevent top/bottom cutoff
+                            if (Math.sin(angle) > 0.85) {{
+                                position.y -= 5; // Push up slightly for labels near bottom
+                            }} else if (Math.sin(angle) < -0.85) {{
+                                position.y += 5; // Push down slightly for labels near top
+                            }}
+                        }}
+                        
+                        // Format text based on settings
+                        let text = '';
+                        if ({showValues.ToString().ToLower()}) {{
+                            text += value.toLocaleString();
+                        }}
+                        if ({showPercentages.ToString().ToLower()}) {{
+                            const percentage = Math.round((value / total) * 100);
+                            if (text) text += ' ';
+                            text += '(' + percentage + '%)';
+                        }}
+                        
+                        // Set styling
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        
+                        if ('{valuePosition}' === 'inside') {{
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(text, position.x, position.y);
+                        }} else {{
+                            // Add background for better readability
+                            const width = ctx.measureText(text).width + 6;
+                            const height = 16;
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                            ctx.fillRect(position.x - width/2, position.y - height/2, width, height);
+                            ctx.fillStyle = '#333';
+                            ctx.fillText(text, position.x, position.y);
+                        }}
+                    }});
+                    
+                    ctx.restore();
+                }}
+            }}]
         }});
     }});
 </script>";
