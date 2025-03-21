@@ -399,7 +399,7 @@ namespace WebApplication6
             return options;
         }
 
-        // Add this method to your ReportController class for pie chart support
+        // Enhanced RenderPieChart method with data value display
         private string RenderPieChart(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the chart
@@ -410,6 +410,9 @@ namespace WebApplication6
             bool showLegend = true;
             bool showLabels = true;
             bool isDoughnut = false;
+            bool showValues = true;           // Show data values on the chart by default
+            bool showPercentages = true;      // Show percentages on the chart by default
+            string valuePosition = "legend";  // Where to display values: 'inside', 'outside', or 'legend'
 
             // Define default colors to cycle through
             string[] backgroundColors = new string[]
@@ -550,7 +553,48 @@ namespace WebApplication6
                     }
                 }
 
-                // Custom colors for each slice can also be added in formatting
+                // Parse value display options
+                if (formattingStr.Contains("showValues:"))
+                {
+                    int start = formattingStr.IndexOf("showValues:") + 11;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showValuesStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showValuesStr, out showValues);
+                    }
+                }
+
+                if (formattingStr.Contains("showPercentages:"))
+                {
+                    int start = formattingStr.IndexOf("showPercentages:") + 16;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showPercentagesStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showPercentagesStr, out showPercentages);
+                    }
+                }
+
+                if (formattingStr.Contains("valuePosition:"))
+                {
+                    int start = formattingStr.IndexOf("valuePosition:") + 14;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string valuePositionStr = formattingStr.Substring(start, end - start).Trim();
+                        if (valuePositionStr.StartsWith("\"") && valuePositionStr.EndsWith("\""))
+                            valuePositionStr = valuePositionStr.Substring(1, valuePositionStr.Length - 2);
+
+                        if (valuePositionStr == "inside" || valuePositionStr == "outside" || valuePositionStr == "legend")
+                        {
+                            valuePosition = valuePositionStr;
+                        }
+                    }
+                }
             }
 
             // Get column indices
@@ -667,13 +711,36 @@ namespace WebApplication6
                             plugins: {{
                                 legend: {{
                                     display: {showLegend.ToString().ToLower()},
-                                    position: 'bottom'
-                                }},
-                                title: {{
-                                    display: true,
-                                    text: '{chartTitle} - {groupValue}',
-                                    font: {{
-                                        size: 14
+                                    position: 'right',
+                                    labels: {{
+                                        generateLabels: function(chart) {{
+                                            // Get the default legend items
+                                            const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                            const labels = original.call(this, chart);
+                                            
+                                            // Only modify if showing values or percentages
+                                            if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
+                                                // Calculate total for percentages
+                                                const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                                
+                                                // Modify the text to include values/percentages
+                                                labels.forEach((label, i) => {{
+                                                    const value = chart.data.datasets[0].data[i];
+                                                    const percentage = Math.round((value / total) * 100);
+                                                    
+                                                    let newText = label.text;
+                                                    if ({showValues.ToString().ToLower()}) {{
+                                                        newText += ' - ' + value.toLocaleString();
+                                                    }}
+                                                    if ({showPercentages.ToString().ToLower()}) {{
+                                                        newText += ' (' + percentage + '%)';
+                                                    }}
+                                                    label.text = newText;
+                                                }});
+                                            }}
+                                            
+                                            return labels;
+                                        }}
                                     }}
                                 }},
                                 tooltip: {{
@@ -683,14 +750,36 @@ namespace WebApplication6
                                             var value = context.raw || 0;
                                             var total = context.dataset.data.reduce((a, b) => a + b, 0);
                                             var percentage = Math.round((value / total) * 100);
-                                            return label + ': ' + value + ' (' + percentage + '%)';
+                                            return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
                                         }}
                                     }}
-                                }}
-                            }},
-                            elements: {{
-                                arc: {{
-                                    borderWidth: 1
+                                }},
+                                datalabels: {{
+                                    display: {((showValues || showPercentages) && valuePosition != "legend").ToString().ToLower()},
+                                    color: 'white',
+                                    font: {{
+                                        weight: 'bold',
+                                        size: 11
+                                    }},
+                                    textAlign: 'center',
+                                    textBaseline: 'middle',
+                                    formatter: function(value, context) {{
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = Math.round((value / total) * 100);
+                                        
+                                        let result = '';
+                                        if ({showValues.ToString().ToLower()}) {{
+                                            result += value.toLocaleString();
+                                        }}
+                                        if ({showPercentages.ToString().ToLower()}) {{
+                                            if (result) result += ' ';
+                                            result += '(' + percentage + '%)';
+                                        }}
+                                        return result;
+                                    }},
+                                    anchor: '{(valuePosition == "inside" ? "center" : "end")}',
+                                    align: '{(valuePosition == "inside" ? "center" : "end")}',
+                                    offset: {(valuePosition == "inside" ? "0" : "10")}
                                 }}
                             }}
                         }}
@@ -759,6 +848,80 @@ namespace WebApplication6
                 html += $@"
 <script>
     $(document).ready(function() {{
+        // Load Chart.js DataLabels Plugin if needed
+        if (('{valuePosition}' === 'inside' || '{valuePosition}' === 'outside') && 
+            {(showValues || showPercentages).ToString().ToLower()} &&
+            typeof Chart !== 'undefined' && 
+            !Chart.registry.getPlugin('datalabels')) {{
+            
+            // Define a simplified version of the Chart.js DataLabels plugin
+            const ChartDataLabels = {{
+                id: 'datalabels',
+                afterDatasetsDraw: function(chart) {{
+                    const ctx = chart.ctx;
+                    
+                    chart.data.datasets.forEach((dataset, datasetIndex) => {{
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        
+                        if (!meta.hidden) {{
+                            meta.data.forEach((element, index) => {{
+                                const dataValue = dataset.data[index];
+                                if (dataValue === 0) return; // Skip zero values
+                                
+                                // Calculate percentage
+                                const total = dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((dataValue / total) * 100);
+                                
+                                // Format display text
+                                let displayText = '';
+                                if ({showValues.ToString().ToLower()}) {{
+                                    displayText += dataValue.toLocaleString();
+                                }}
+                                if ({showPercentages.ToString().ToLower()}) {{
+                                    if (displayText) displayText += ' ';
+                                    displayText += '(' + percentage + '%)';
+                                }}
+                                
+                                // Get position
+                                let position;
+                                if ('{valuePosition}' === 'inside') {{
+                                    position = element.getCenterPoint();
+                                }} else {{
+                                    // Outside - calculate position at the end of the slice
+                                    const angle = element.startAngle + (element.endAngle - element.startAngle) / 2;
+                                    const radius = element.outerRadius * 1.2;
+                                    position = {{
+                                        x: element.x + Math.cos(angle) * radius,
+                                        y: element.y + Math.sin(angle) * radius
+                                    }};
+                                }}
+                                
+                                // Draw text
+                                ctx.font = 'bold 12px Arial';
+                                ctx.fillStyle = '{valuePosition}' === 'inside' ? 'white' : '#333';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                
+                                if ('{valuePosition}' === 'outside') {{
+                                    // Add background for outside labels
+                                    const width = ctx.measureText(displayText).width + 6;
+                                    const height = 16;
+                                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                                    ctx.fillRect(position.x - width/2, position.y - height/2, width, height);
+                                    ctx.fillStyle = '#333';
+                                }}
+                                
+                                ctx.fillText(displayText, position.x, position.y);
+                            }});
+                        }}
+                    }});
+                }}
+            }};
+            
+            // Register plugin
+            Chart.register(ChartDataLabels);
+        }}
+        
         var ctx = document.getElementById('{chartId}').getContext('2d');
         var myPieChart = new Chart(ctx, {{
             type: '{(isDoughnut ? "doughnut" : "pie")}',
@@ -777,11 +940,37 @@ namespace WebApplication6
                 plugins: {{
                     legend: {{
                         display: {showLegend.ToString().ToLower()},
-                        position: 'right'
-                    }},
-                    title: {{
-                        display: true,
-                        text: '{chartTitle}'
+                        position: 'right',
+                        labels: {{
+                            generateLabels: function(chart) {{
+                                // Get the default legend items
+                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                const labels = original.call(this, chart);
+                                
+                                // Only modify if showing values or percentages
+                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
+                                    // Calculate total for percentages
+                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    
+                                    // Modify the text to include values/percentages
+                                    labels.forEach((label, i) => {{
+                                        const value = chart.data.datasets[0].data[i];
+                                        const percentage = Math.round((value / total) * 100);
+                                        
+                                        let newText = label.text;
+                                        if ({showValues.ToString().ToLower()}) {{
+                                            newText += ' - ' + value.toLocaleString();
+                                        }}
+                                        if ({showPercentages.ToString().ToLower()}) {{
+                                            newText += ' (' + percentage + '%)';
+                                        }}
+                                        label.text = newText;
+                                    }});
+                                }}
+                                
+                                return labels;
+                            }}
+                        }}
                     }},
                     tooltip: {{
                         callbacks: {{
@@ -790,7 +979,7 @@ namespace WebApplication6
                                 var value = context.raw || 0;
                                 var total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 var percentage = Math.round((value / total) * 100);
-                                return label + ': ' + value + ' (' + percentage + '%)';
+                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
                             }}
                         }}
                     }}
