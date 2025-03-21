@@ -165,25 +165,6 @@ namespace WebApplication6
             return result;
         }
 
-        private string RenderData(DataTable data, Dictionary<string, string> instructions)
-        {
-            string representation = instructions["representation"].ToLower();
-
-            switch (representation)
-            {
-                case "table":
-                    return RenderDataTable(data, instructions);
-                case "barchart":
-                    return RenderBarChart(data, instructions);
-                case "linechart":
-                    return RenderLineChart(data, instructions);
-                case "piechart":
-                    return RenderPieChart(data, instructions);
-                default:
-                    return RenderDataTable(data, instructions);
-            }
-        }
-
         private string RenderDataTable(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the table
@@ -399,650 +380,34 @@ namespace WebApplication6
             return options;
         }
 
-        // Complete fixed RenderPieChart implementation
-        private string RenderPieChart(DataTable data, Dictionary<string, string> instructions)
+        private string RenderData(DataTable data, Dictionary<string, string> instructions)
         {
-            // Create a unique ID for the chart
-            string chartId = "piechart_" + Guid.NewGuid().ToString("N");
+            string representation = instructions["representation"].ToLower();
 
-            // Default configuration
-            string chartTitle = "Pie Chart";
-            bool showLegend = true;
-            bool isDoughnut = false;
-            bool showValues = true;           // Show data values on the chart by default
-            bool showPercentages = true;      // Show percentages on the chart by default
-            string valuePosition = "legend";  // Where to display values: 'inside', 'outside', or 'legend'
-            int chartPadding = 50;           // Increased padding to accommodate labels
-
-            // Define default colors to cycle through
-            string[] backgroundColors = new string[]
+            // Apply sorting if specified in the instructions
+            if (instructions.ContainsKey("sortBy") && !string.IsNullOrEmpty(instructions["sortBy"]))
             {
-        "rgba(75, 192, 192, 0.7)",
-        "rgba(255, 99, 132, 0.7)",
-        "rgba(54, 162, 235, 0.7)",
-        "rgba(255, 206, 86, 0.7)",
-        "rgba(153, 102, 255, 0.7)",
-        "rgba(255, 159, 64, 0.7)",
-        "rgba(201, 203, 207, 0.7)",
-        "rgba(100, 149, 237, 0.7)"
-            };
+                string sortBy = instructions["sortBy"];
+                string sortDirection = instructions.ContainsKey("sortDirection") ?
+                    instructions["sortDirection"].ToLower() : "asc";
 
-            string[] borderColors = new string[]
-            {
-        "rgba(75, 192, 192, 1)",
-        "rgba(255, 99, 132, 1)",
-        "rgba(54, 162, 235, 1)",
-        "rgba(255, 206, 86, 1)",
-        "rgba(153, 102, 255, 1)",
-        "rgba(255, 159, 64, 1)",
-        "rgba(201, 203, 207, 1)",
-        "rgba(100, 149, 237, 1)"
-            };
-
-            // Get series column name (value column for the pie chart)
-            string seriesColumn = "";
-            if (instructions.ContainsKey("series"))
-            {
-                string seriesValue = instructions["series"];
-                if (seriesValue.StartsWith("[") && seriesValue.EndsWith("]"))
-                {
-                    // For pie charts, we only use the first series (can't display multiple series in one pie)
-                    seriesValue = seriesValue.Substring(1, seriesValue.Length - 2);
-                    string firstSeries = seriesValue.Split(',')
-                        .Select(s => s.Trim().Trim('"', '\''))
-                        .FirstOrDefault();
-
-                    if (!string.IsNullOrEmpty(firstSeries))
-                    {
-                        seriesColumn = firstSeries;
-                    }
-                }
-                else
-                {
-                    seriesColumn = seriesValue;
-                }
-            }
-            else if (data.Columns.Count > 1)
-            {
-                // Default to second column
-                seriesColumn = data.Columns[1].ColumnName;
+                // We're not sorting the data here anymore - we'll pass these to the chart config
             }
 
-            // Check if we need to group by a column
-            string groupByColumn = null;
-            if (instructions.ContainsKey("groupBy"))
+            switch (representation)
             {
-                groupByColumn = instructions["groupBy"];
-            }
-
-            // Get legends (defaults to first column for labels)
-            string legendsColumn = data.Columns[0].ColumnName;
-            if (instructions.ContainsKey("legends"))
-            {
-                string legendsValue = instructions["legends"];
-                if (legendsValue.StartsWith("[") && legendsValue.EndsWith("]"))
-                {
-                    // For pie charts, we only use the first legend
-                    legendsValue = legendsValue.Substring(1, legendsValue.Length - 2);
-                    string firstLegend = legendsValue.Split(',')
-                        .Select(s => s.Trim().Trim('"', '\''))
-                        .FirstOrDefault();
-
-                    if (!string.IsNullOrEmpty(firstLegend))
-                    {
-                        legendsColumn = firstLegend;
-                    }
-                }
-                else
-                {
-                    legendsColumn = legendsValue;
-                }
-            }
-
-            // Extract formatting options if available
-            if (instructions.ContainsKey("formatting"))
-            {
-                string formattingStr = instructions["formatting"];
-
-                if (formattingStr.Contains("title:"))
-                {
-                    int start = formattingStr.IndexOf("title:") + 6;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        chartTitle = formattingStr.Substring(start, end - start).Trim();
-                        if (chartTitle.StartsWith("\"") && chartTitle.EndsWith("\""))
-                            chartTitle = chartTitle.Substring(1, chartTitle.Length - 2);
-                    }
-                }
-
-                if (formattingStr.Contains("showLegend:"))
-                {
-                    int start = formattingStr.IndexOf("showLegend:") + 11;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string showLegendStr = formattingStr.Substring(start, end - start).Trim();
-                        bool.TryParse(showLegendStr, out showLegend);
-                    }
-                }
-
-                if (formattingStr.Contains("doughnut:"))
-                {
-                    int start = formattingStr.IndexOf("doughnut:") + 9;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string doughnutStr = formattingStr.Substring(start, end - start).Trim();
-                        bool.TryParse(doughnutStr, out isDoughnut);
-                    }
-                }
-
-                // Parse value display options
-                if (formattingStr.Contains("showValues:"))
-                {
-                    int start = formattingStr.IndexOf("showValues:") + 11;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string showValuesStr = formattingStr.Substring(start, end - start).Trim();
-                        bool.TryParse(showValuesStr, out showValues);
-                    }
-                }
-
-                if (formattingStr.Contains("showPercentages:"))
-                {
-                    int start = formattingStr.IndexOf("showPercentages:") + 16;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string showPercentagesStr = formattingStr.Substring(start, end - start).Trim();
-                        bool.TryParse(showPercentagesStr, out showPercentages);
-                    }
-                }
-
-                if (formattingStr.Contains("valuePosition:"))
-                {
-                    int start = formattingStr.IndexOf("valuePosition:") + 14;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string valuePositionStr = formattingStr.Substring(start, end - start).Trim();
-                        if (valuePositionStr.StartsWith("\"") && valuePositionStr.EndsWith("\""))
-                            valuePositionStr = valuePositionStr.Substring(1, valuePositionStr.Length - 2);
-
-                        if (valuePositionStr == "inside" || valuePositionStr == "outside" || valuePositionStr == "legend")
-                        {
-                            valuePosition = valuePositionStr;
-                        }
-                    }
-                }
-
-                // Parse chart padding if specified
-                if (formattingStr.Contains("chartPadding:"))
-                {
-                    int start = formattingStr.IndexOf("chartPadding:") + 13;
-                    int end = formattingStr.IndexOf(",", start);
-                    if (end == -1) end = formattingStr.IndexOf("}", start);
-                    if (end > start)
-                    {
-                        string paddingStr = formattingStr.Substring(start, end - start).Trim();
-                        int.TryParse(paddingStr, out chartPadding);
-                    }
-                }
-            }
-
-            // Get column indices
-            int legendsColumnIndex = -1;
-            int seriesColumnIndex = -1;
-            int groupByColumnIndex = -1;
-
-            // Find legend column index
-            for (int i = 0; i < data.Columns.Count; i++)
-            {
-                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
-                {
-                    legendsColumnIndex = i;
-                    break;
-                }
-            }
-
-            // Find series column index
-            for (int i = 0; i < data.Columns.Count; i++)
-            {
-                if (data.Columns[i].ColumnName.Equals(seriesColumn, StringComparison.OrdinalIgnoreCase))
-                {
-                    seriesColumnIndex = i;
-                    break;
-                }
-            }
-
-            // Find groupBy column index if specified
-            if (!string.IsNullOrEmpty(groupByColumn))
-            {
-                for (int i = 0; i < data.Columns.Count; i++)
-                {
-                    if (data.Columns[i].ColumnName.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase))
-                    {
-                        groupByColumnIndex = i;
-                        break;
-                    }
-                }
-            }
-
-            // Variables to store data for the chart
-            List<string> labels = new List<string>();
-            List<double> values = new List<double>();
-            List<string> backgroundColorList = new List<string>();
-            List<string> borderColorList = new List<string>();
-
-            // Different behavior based on whether we're grouping or not
-            if (!string.IsNullOrEmpty(groupByColumn) && groupByColumnIndex != -1)
-            {
-                // We're generating a multi-chart presentation - one pie chart per groupBy value
-
-                // Get unique group values
-                List<string> uniqueGroups = data.AsEnumerable()
-                    .Select(row => row[groupByColumnIndex].ToString())
-                    .Distinct()
-                    .OrderBy(g => g)
-                    .ToList();
-
-                // Create a container div for all charts - with flexible layout
-                string html = $"<div style='display: flex; flex-wrap: wrap; justify-content: center; width:100%;'>";
-
-                // Generate one pie chart for each group
-                for (int groupIndex = 0; groupIndex < uniqueGroups.Count; groupIndex++)
-                {
-                    string groupValue = uniqueGroups[groupIndex];
-                    string groupChartId = $"{chartId}_{groupIndex}";
-
-                    // Filter data for this group
-                    var groupData = data.AsEnumerable()
-                        .Where(row => row[groupByColumnIndex].ToString() == groupValue)
-                        .ToList();
-
-                    // Get labels and values for this group
-                    labels.Clear();
-                    values.Clear();
-                    backgroundColorList.Clear();
-                    borderColorList.Clear();
-
-                    for (int i = 0; i < groupData.Count; i++)
-                    {
-                        DataRow row = groupData[i];
-                        labels.Add(row[legendsColumnIndex].ToString());
-                        values.Add(Convert.ToDouble(row[seriesColumnIndex]));
-
-                        // Use the color palette with cycling
-                        backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
-                        borderColorList.Add(borderColors[i % borderColors.Length]);
-                    }
-
-                    // Create chart div for this group with fixed width to ensure consistent sizing
-                    html += $"<div style='flex: 1; min-width: 300px; max-width: 500px; margin: 10px;'>";
-                    html += $"<h3 style='text-align: center;'>{groupValue}</h3>";
-                    html += $"<div style='height: 300px;'><canvas id='{groupChartId}'></canvas></div>";
-
-                    // Add the Chart.js initialization script for this group
-                    html += $@"
-<script>
-    $(document).ready(function() {{
-        var ctx = document.getElementById('{groupChartId}').getContext('2d');
-        var myPieChart = new Chart(ctx, {{
-            type: '{(isDoughnut ? "doughnut" : "pie")}',
-            data: {{
-                labels: {JsonConvert.SerializeObject(labels)},
-                datasets: [{{
-                    data: {JsonConvert.SerializeObject(values)},
-                    backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
-                    borderColor: {JsonConvert.SerializeObject(borderColorList)},
-                    borderWidth: 1
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                layout: {{
-                    padding: {chartPadding}
-                }},
-                plugins: {{
-                    legend: {{
-                        display: {showLegend.ToString().ToLower()},
-                        position: 'right',
-                        labels: {{
-                            generateLabels: function(chart) {{
-                                // Get the default legend items
-                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
-                                const labels = original.call(this, chart);
-                                
-                                // Only modify if showing values or percentages in legend
-                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
-                                    // Calculate total for percentages
-                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                    
-                                    // Modify the text to include values/percentages
-                                    labels.forEach((label, i) => {{
-                                        const value = chart.data.datasets[0].data[i];
-                                        const percentage = Math.round((value / total) * 100);
-                                        
-                                        let newText = label.text;
-                                        if ({showValues.ToString().ToLower()}) {{
-                                            newText += ' - ' + value.toLocaleString();
-                                        }}
-                                        if ({showPercentages.ToString().ToLower()}) {{
-                                            newText += ' (' + percentage + '%)';
-                                        }}
-                                        label.text = newText;
-                                    }});
-                                }}
-                                
-                                return labels;
-                            }}
-                        }}
-                    }},
-                    tooltip: {{
-                        callbacks: {{
-                            label: function(context) {{
-                                var label = context.label || '';
-                                var value = context.raw || 0;
-                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                var percentage = Math.round((value / total) * 100);
-                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
-                            }}
-                        }}
-                    }}
-                }}
-            }},
-            plugins: [
-                {{
-                    id: 'insideLabels',
-                    afterDraw: function(chart) {{
-                        // Only run this plugin for inside position with values or percentages
-                        var valuePosition = '{valuePosition}';
-                        var showValues = {showValues.ToString().ToLower()};
-                        var showPercentages = {showPercentages.ToString().ToLower()};
-                        
-                        if (valuePosition !== 'inside' || (!showValues && !showPercentages)) {{
-                            return;
-                        }}
-                        
-                        var ctx = chart.ctx;
-                        ctx.save();
-                        
-                        var total = 0;
-                        for (var i = 0; i < chart.data.datasets[0].data.length; i++) {{
-                            total += chart.data.datasets[0].data[i];
-                        }}
-                        
-                        for (var i = 0; i < chart.getDatasetMeta(0).data.length; i++) {{
-                            var arc = chart.getDatasetMeta(0).data[i];
-                            var value = chart.data.datasets[0].data[i];
-                            
-                            if (value === 0) continue; // Skip zero values
-                            
-                            // Calculate percentage
-                            var percentage = Math.round((value / total) * 100);
-                            
-                            // Calculate display position
-                            var midAngle = (arc.startAngle + arc.endAngle) / 2;
-                            var radius = arc.outerRadius * 0.6;
-                            
-                            // Position based on slice size
-                            var slicePercentage = value / total;
-                            if (slicePercentage < 0.1) {{ // Small slice
-                                radius = arc.outerRadius * 0.5;
-                            }} else if (slicePercentage > 0.25) {{ // Large slice
-                                radius = arc.outerRadius * 0.7;
-                            }}
-                            
-                            var x = arc.x + Math.cos(midAngle) * radius;
-                            var y = arc.y + Math.sin(midAngle) * radius;
-                            
-                            // Format text
-                            var displayText = '';
-                            if (showValues) {{
-                                displayText += value.toLocaleString();
-                            }}
-                            if (showPercentages) {{
-                                if (displayText) displayText += ' ';
-                                displayText += '(' + percentage + '%)';
-                            }}
-                            
-                            // Draw text
-                            ctx.font = 'bold 12px Arial';
-                            ctx.fillStyle = 'white';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.fillText(displayText, x, y);
-                        }}
-                        
-                        ctx.restore();
-                    }}
-                }}
-            ]
-        }});
-    }});
-</script>";
-
-                    html += "</div>"; // Close the chart div
-                }
-
-                html += "</div>"; // Close the container div
-                return html;
-            }
-            else
-            {
-                // Standard single pie chart
-                for (int i = 0; i < data.Rows.Count; i++)
-                {
-                    DataRow row = data.Rows[i];
-                    labels.Add(row[legendsColumnIndex].ToString());
-                    values.Add(Convert.ToDouble(row[seriesColumnIndex]));
-
-                    // Use the color palette with cycling
-                    backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
-                    borderColorList.Add(borderColors[i % borderColors.Length]);
-
-                    // Custom colors can be added from formatting
-                    if (instructions.ContainsKey("formatting"))
-                    {
-                        string formattingStr = instructions["formatting"];
-
-                        if (formattingStr.Contains($"backgroundColor{i}:"))
-                        {
-                            int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
-                            int end = formattingStr.IndexOf(",", start);
-                            if (end == -1) end = formattingStr.IndexOf("}", start);
-                            if (end > start)
-                            {
-                                string backgroundColor = formattingStr.Substring(start, end - start).Trim();
-                                if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
-                                    backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
-                                backgroundColorList[i] = backgroundColor;
-                            }
-                        }
-
-                        if (formattingStr.Contains($"borderColor{i}:"))
-                        {
-                            int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
-                            int end = formattingStr.IndexOf(",", start);
-                            if (end == -1) end = formattingStr.IndexOf("}", start);
-                            if (end > start)
-                            {
-                                string borderColor = formattingStr.Substring(start, end - start).Trim();
-                                if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
-                                    borderColor = borderColor.Substring(1, borderColor.Length - 2);
-                                borderColorList[i] = borderColor;
-                            }
-                        }
-                    }
-                }
-
-                // Create the HTML container for the chart
-                // Keep the height the same but adjust positioning to ensure labels fit
-                string html = $"<div style='width:100%; height:400px; position: relative;'><canvas id='{chartId}'></canvas></div>";
-
-                // Add the Chart.js initialization script
-                html += $@"
-<script>
-    $(document).ready(function() {{
-        var ctx = document.getElementById('{chartId}').getContext('2d');
-        var myPieChart = new Chart(ctx, {{
-            type: '{(isDoughnut ? "doughnut" : "pie")}',
-            data: {{
-                labels: {JsonConvert.SerializeObject(labels)},
-                datasets: [{{
-                    data: {JsonConvert.SerializeObject(values)},
-                    backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
-                    borderColor: {JsonConvert.SerializeObject(borderColorList)},
-                    borderWidth: 1
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                maintainAspectRatio: false,
-                
-                // Added layout padding to ensure outside labels fit within canvas
-                layout: {{
-                    padding: {chartPadding}
-                }},
-                
-                // Make the chart slightly smaller to accommodate labels
-                plugins: {{
-                    legend: {{
-                        display: {showLegend.ToString().ToLower()},
-                        position: 'right',
-                        labels: {{
-                            generateLabels: function(chart) {{
-                                // Get the default legend items
-                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
-                                const labels = original.call(this, chart);
-                                
-                                // Only modify if showing values or percentages in legend
-                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
-                                    // Calculate total for percentages
-                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                    
-                                    // Modify the text to include values/percentages
-                                    labels.forEach((label, i) => {{
-                                        const value = chart.data.datasets[0].data[i];
-                                        const percentage = Math.round((value / total) * 100);
-                                        
-                                        let newText = label.text;
-                                        if ({showValues.ToString().ToLower()}) {{
-                                            newText += ' - ' + value.toLocaleString();
-                                        }}
-                                        if ({showPercentages.ToString().ToLower()}) {{
-                                            newText += ' (' + percentage + '%)';
-                                        }}
-                                        label.text = newText;
-                                    }});
-                                }}
-                                
-                                return labels;
-                            }}
-                        }}
-                    }},
-                    tooltip: {{
-                        callbacks: {{
-                            label: function(context) {{
-                                var label = context.label || '';
-                                var value = context.raw || 0;
-                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                var percentage = Math.round((value / total) * 100);
-                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
-                            }}
-                        }}
-                    }}
-                }}
-            }},
-            plugins: [{{
-                id: 'valueLabels',
-                afterDraw: function(chart) {{
-                    // Only show labels if not legend mode and we're showing values or percentages
-                    if ('{valuePosition}' === 'legend' || !({(showValues || showPercentages).ToString().ToLower()})) {{
-                        return;
-                    }}
-                    
-                    const ctx = chart.ctx;
-                    ctx.save();
-                    
-                    // Get the total for percentage calculations
-                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                    
-                    chart.getDatasetMeta(0).data.forEach((arc, i) => {{
-                        const value = chart.data.datasets[0].data[i];
-                        if (value === 0) return; // Skip zero values
-                        
-                        // Get position based on mode
-                        let position = {{x: arc.x, y: arc.y}};
-                        if ('{valuePosition}' === 'outside') {{
-                            const angle = (arc.startAngle + arc.endAngle) / 2;
-                            
-                            // Use a smaller radius multiplier to keep labels closer to the pie
-                            // This helps prevent labels from going outside the canvas
-                            const radius = arc.outerRadius * 1.1;
-                            position.x += Math.cos(angle) * radius;
-                            position.y += Math.sin(angle) * radius;
-                            
-                            // Adjust vertical positioning to prevent top/bottom cutoff
-                            if (Math.sin(angle) > 0.85) {{
-                                position.y -= 5; // Push up slightly for labels near bottom
-                            }} else if (Math.sin(angle) < -0.85) {{
-                                position.y += 5; // Push down slightly for labels near top
-                            }}
-                        }}
-                        
-                        // Format text based on settings
-                        let text = '';
-                        if ({showValues.ToString().ToLower()}) {{
-                            text += value.toLocaleString();
-                        }}
-                        if ({showPercentages.ToString().ToLower()}) {{
-                            const percentage = Math.round((value / total) * 100);
-                            if (text) text += ' ';
-                            text += '(' + percentage + '%)';
-                        }}
-                        
-                        // Set styling
-                        ctx.font = 'bold 12px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        
-                        if ('{valuePosition}' === 'inside') {{
-                            ctx.fillStyle = 'white';
-                            ctx.fillText(text, position.x, position.y);
-                        }} else {{
-                            // Add background for better readability
-                            const width = ctx.measureText(text).width + 6;
-                            const height = 16;
-                            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                            ctx.fillRect(position.x - width/2, position.y - height/2, width, height);
-                            ctx.fillStyle = '#333';
-                            ctx.fillText(text, position.x, position.y);
-                        }}
-                    }});
-                    
-                    ctx.restore();
-                }}
-            }}]
-        }});
-    }});
-</script>";
-
-                return html;
+                case "table":
+                    return RenderDataTable(data, instructions);
+                case "barchart":
+                    return RenderBarChart(data, instructions);
+                case "linechart":
+                    return RenderLineChart(data, instructions);
+                case "piechart":
+                    return RenderPieChart(data, instructions);
+                default:
+                    return RenderDataTable(data, instructions);
             }
         }
-
-
-        // This is a complete implementation of the BarChart method with the fix for duplicate labels
 
         private string RenderBarChart(DataTable data, Dictionary<string, string> instructions)
         {
@@ -1054,6 +419,20 @@ namespace WebApplication6
             int borderWidth = 1;
             bool horizontal = false;
             bool stacked = false;
+
+            // Sorting parameters
+            string sortBy = null;
+            string sortDirection = "asc";
+
+            if (instructions.ContainsKey("sortBy"))
+            {
+                sortBy = instructions["sortBy"];
+            }
+
+            if (instructions.ContainsKey("sortDirection"))
+            {
+                sortDirection = instructions["sortDirection"].ToLower();
+            }
 
             // Define default colors to cycle through
             string[] backgroundColors = new string[]
@@ -1194,6 +573,7 @@ namespace WebApplication6
             int legendsColumnIndex = -1;
             Dictionary<string, int> seriesColumnIndices = new Dictionary<string, int>();
             int groupByColumnIndex = -1;
+            int sortByColumnIndex = -1;
 
             // Find legend column index
             for (int i = 0; i < data.Columns.Count; i++)
@@ -1227,6 +607,33 @@ namespace WebApplication6
                     {
                         groupByColumnIndex = i;
                         break;
+                    }
+                }
+            }
+
+            // Find sortBy column index if specified
+            if (!string.IsNullOrEmpty(sortBy))
+            {
+                // First check if sortBy is a series column
+                foreach (var kvp in seriesColumnIndices)
+                {
+                    if (kvp.Key.Equals(sortBy, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sortByColumnIndex = kvp.Value;
+                        break;
+                    }
+                }
+
+                // If not found yet, check all columns
+                if (sortByColumnIndex == -1)
+                {
+                    for (int i = 0; i < data.Columns.Count; i++)
+                    {
+                        if (data.Columns[i].ColumnName.Equals(sortBy, StringComparison.OrdinalIgnoreCase))
+                        {
+                            sortByColumnIndex = i;
+                            break;
+                        }
                     }
                 }
             }
@@ -1414,17 +821,105 @@ namespace WebApplication6
             // Create the HTML container for the chart
             string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
 
-            // Add the Chart.js initialization script
+            // Add the Chart.js initialization script with sorting capability
             html += $@"
 <script>
     $(document).ready(function() {{
         var ctx = document.getElementById('{chartId}').getContext('2d');
+        
+        // Original data
+        var chartData = {{
+            labels: {JsonConvert.SerializeObject(labels)},
+            datasets: [{string.Join(",", datasets)}]
+        }};
+        
+        // Apply sorting if specified
+        {(string.IsNullOrEmpty(sortBy) ? "" : $@"
+        // Sort data based on '{sortBy}' in '{sortDirection}' order
+        (function() {{
+            // Determine if sorting by labels (x-axis values) or by a dataset value
+            var sortByLabels = '{sortBy}' === '{legendsColumn}';
+            var sortDatasetIndex = 0;
+            
+            if (!sortByLabels) {{
+                // Find dataset index for sorting by data values
+                var sortByColumn = '{sortBy}';
+                
+                // Match the sort column with a dataset
+                for (var i = 0; i < chartData.datasets.length; i++) {{
+                    if (chartData.datasets[i].label.includes(sortByColumn)) {{
+                        sortDatasetIndex = i;
+                        break;
+                    }}
+                }}
+            }}
+            
+            // Create pairs of [label, value] for sorting
+            var pairs = [];
+            for (var i = 0; i < chartData.labels.length; i++) {{
+                pairs.push({{
+                    label: chartData.labels[i],
+                    value: sortByLabels ? chartData.labels[i] : chartData.datasets[sortDatasetIndex].data[i]
+                }});
+            }}
+            
+            // Sort the pairs
+            pairs.sort(function(a, b) {{
+                if (sortByLabels) {{
+                    // Try to detect if labels are years or dates
+                    var aIsNumber = !isNaN(Number(a.value));
+                    var bIsNumber = !isNaN(Number(b.value));
+                    
+                    if (aIsNumber && bIsNumber) {{
+                        // For numeric labels like years, sort numerically
+                        return '{sortDirection}' === 'asc' ? 
+                            Number(a.value) - Number(b.value) : 
+                            Number(b.value) - Number(a.value);
+                    }} else {{
+                        // For text, sort alphabetically
+                        return '{sortDirection}' === 'asc' ? 
+                            a.value.localeCompare(b.value) : 
+                            b.value.localeCompare(a.value);
+                    }}
+                }} else {{
+                    // For numeric values, sort by the dataset value
+                    return '{sortDirection}' === 'asc' ? a.value - b.value : b.value - a.value;
+                }}
+            }});
+            
+            // Create new sorted arrays
+            var sortedLabels = [];
+            var sortedDatasets = [];
+            
+            // Initialize sorted datasets with empty arrays
+            for (var i = 0; i < chartData.datasets.length; i++) {{
+                sortedDatasets[i] = [];
+            }}
+            
+            // Reorder all data based on the sorted pairs
+            for (var i = 0; i < pairs.length; i++) {{
+                sortedLabels.push(pairs[i].label);
+                
+                // Find original index of this label
+                var originalIndex = chartData.labels.indexOf(pairs[i].label);
+                
+                // Add values from all datasets
+                for (var j = 0; j < chartData.datasets.length; j++) {{
+                    sortedDatasets[j].push(chartData.datasets[j].data[originalIndex]);
+                }}
+            }}
+            
+            // Replace original data with sorted data
+            chartData.labels = sortedLabels;
+            for (var i = 0; i < chartData.datasets.length; i++) {{
+                chartData.datasets[i].data = sortedDatasets[i];
+            }}
+        }})();
+        ")}
+        
         var myBarChart = new Chart(ctx, {{
             type: 'bar',
-            data: {{
-                labels: {JsonConvert.SerializeObject(labels)},
-                datasets: [{string.Join(",", datasets)}]
-            }},
+            data: chartData,
             options: {{
                 indexAxis: '{(horizontal ? "y" : "x")}',
                 responsive: true,
@@ -1463,19 +958,6 @@ namespace WebApplication6
             return html;
         }
 
-        // Helper method to get unique ordered labels
-        private List<string> GetUniqueOrderedLabels(DataTable data, int legendsColumnIndex)
-        {
-            // Use OrderBy to ensure consistent ordering and prevent duplicates
-            return data.AsEnumerable()
-                .Select(row => row[legendsColumnIndex].ToString())
-                .Distinct()
-                .OrderBy(label => label)
-                .ToList();
-        }
-
-        // Updated RenderLineChart method with multiple Y-axes support
-        // Complete implementation of RenderLineChart with groupBy support
         private string RenderLineChart(DataTable data, Dictionary<string, string> instructions)
         {
             // Create a unique ID for the chart
@@ -1485,6 +967,20 @@ namespace WebApplication6
             string chartTitle = "Line Chart";
             bool showPoints = true;
             int tension = 0; // 0 = straight lines, higher values = more curved
+
+            // Sorting parameters
+            string sortBy = null;
+            string sortDirection = "asc";
+
+            if (instructions.ContainsKey("sortBy"))
+            {
+                sortBy = instructions["sortBy"];
+            }
+
+            if (instructions.ContainsKey("sortDirection"))
+            {
+                sortDirection = instructions["sortDirection"].ToLower();
+            }
 
             // Define default colors to cycle through
             string[] colors = new string[]
@@ -1601,6 +1097,7 @@ namespace WebApplication6
             int legendsColumnIndex = -1;
             Dictionary<string, int> seriesColumnIndices = new Dictionary<string, int>();
             int groupByColumnIndex = -1;
+            int sortByColumnIndex = -1;
 
             // Find legend column index
             for (int i = 0; i < data.Columns.Count; i++)
@@ -1634,6 +1131,33 @@ namespace WebApplication6
                     {
                         groupByColumnIndex = i;
                         break;
+                    }
+                }
+            }
+
+            // Find sortBy column index if specified
+            if (!string.IsNullOrEmpty(sortBy))
+            {
+                // First check if sortBy is a series column
+                foreach (var kvp in seriesColumnIndices)
+                {
+                    if (kvp.Key.Equals(sortBy, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sortByColumnIndex = kvp.Value;
+                        break;
+                    }
+                }
+
+                // If not found yet, check all columns
+                if (sortByColumnIndex == -1)
+                {
+                    for (int i = 0; i < data.Columns.Count; i++)
+                    {
+                        if (data.Columns[i].ColumnName.Equals(sortBy, StringComparison.OrdinalIgnoreCase))
+                        {
+                            sortByColumnIndex = i;
+                            break;
+                        }
                     }
                 }
             }
@@ -1767,17 +1291,105 @@ namespace WebApplication6
             // Create the HTML container for the chart
             string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
 
-            // Add the Chart.js initialization script
+            // Add the Chart.js initialization script with sorting capability
             html += $@"
 <script>
     $(document).ready(function() {{
         var ctx = document.getElementById('{chartId}').getContext('2d');
+        
+        // Original data
+        var chartData = {{
+            labels: {JsonConvert.SerializeObject(labels)},
+            datasets: [{string.Join(",", datasets)}]
+        }};
+        
+        // Apply sorting if specified
+        {(string.IsNullOrEmpty(sortBy) ? "" : $@"
+        // Sort data based on '{sortBy}' in '{sortDirection}' order
+        (function() {{
+            // Determine if sorting by labels (x-axis values) or by a dataset value
+            var sortByLabels = '{sortBy}' === '{legendsColumn}';
+            var sortDatasetIndex = 0;
+            
+            if (!sortByLabels) {{
+                // Find dataset index for sorting by data values
+                var sortByColumn = '{sortBy}';
+                
+                // Match the sort column with a dataset
+                for (var i = 0; i < chartData.datasets.length; i++) {{
+                    if (chartData.datasets[i].label.includes(sortByColumn)) {{
+                        sortDatasetIndex = i;
+                        break;
+                    }}
+                }}
+            }}
+            
+            // Create pairs of [label, value] for sorting
+            var pairs = [];
+            for (var i = 0; i < chartData.labels.length; i++) {{
+                pairs.push({{
+                    label: chartData.labels[i],
+                    value: sortByLabels ? chartData.labels[i] : chartData.datasets[sortDatasetIndex].data[i]
+                }});
+            }}
+            
+            // Sort the pairs
+            pairs.sort(function(a, b) {{
+                if (sortByLabels) {{
+                    // Try to detect if labels are years or dates
+                    var aIsNumber = !isNaN(Number(a.value));
+                    var bIsNumber = !isNaN(Number(b.value));
+                    
+                    if (aIsNumber && bIsNumber) {{
+                        // For numeric labels like years, sort numerically
+                        return '{sortDirection}' === 'asc' ? 
+                            Number(a.value) - Number(b.value) : 
+                            Number(b.value) - Number(a.value);
+                    }} else {{
+                        // For text, sort alphabetically
+                        return '{sortDirection}' === 'asc' ? 
+                            a.value.localeCompare(b.value) : 
+                            b.value.localeCompare(a.value);
+                    }}
+                }} else {{
+                    // For numeric values, sort by the dataset value
+                    return '{sortDirection}' === 'asc' ? a.value - b.value : b.value - a.value;
+                }}
+            }});
+            
+            // Create new sorted arrays
+            var sortedLabels = [];
+            var sortedDatasets = [];
+            
+            // Initialize sorted datasets with empty arrays
+            for (var i = 0; i < chartData.datasets.length; i++) {{
+                sortedDatasets[i] = [];
+            }}
+            
+            // Reorder all data based on the sorted pairs
+            for (var i = 0; i < pairs.length; i++) {{
+                sortedLabels.push(pairs[i].label);
+                
+                // Find original index of this label
+                var originalIndex = chartData.labels.indexOf(pairs[i].label);
+                
+                // Add values from all datasets
+                for (var j = 0; j < chartData.datasets.length; j++) {{
+                    sortedDatasets[j].push(chartData.datasets[j].data[originalIndex]);
+                }}
+            }}
+            
+            // Replace original data with sorted data
+            chartData.labels = sortedLabels;
+            for (var i = 0; i < chartData.datasets.length; i++) {{
+                chartData.datasets[i].data = sortedDatasets[i];
+            }}
+        }})();
+        ")}
+        
         var myLineChart = new Chart(ctx, {{
             type: 'line',
-            data: {{
-                labels: {JsonConvert.SerializeObject(labels)},
-                datasets: [{string.Join(",", datasets)}]
-            }},
+            data: chartData,
             options: {{
                 responsive: true,
                 maintainAspectRatio: false,
@@ -1806,6 +1418,773 @@ namespace WebApplication6
 </script>";
 
             return html;
+        }
+
+        private string RenderPieChart(DataTable data, Dictionary<string, string> instructions)
+        {
+            // Create a unique ID for the chart
+            string chartId = "piechart_" + Guid.NewGuid().ToString("N");
+
+            // Default configuration
+            string chartTitle = "Pie Chart";
+            bool showLegend = true;
+            bool isDoughnut = false;
+            bool showValues = true;           // Show data values on the chart by default
+            bool showPercentages = true;      // Show percentages on the chart by default
+            string valuePosition = "legend";  // Where to display values: 'inside', 'outside', or 'legend'
+
+            // Sorting parameters
+            string sortBy = null;
+            string sortDirection = "desc";  // Default to descending for pie charts (largest first)
+
+            if (instructions.ContainsKey("sortBy"))
+            {
+                sortBy = instructions["sortBy"];
+            }
+
+            if (instructions.ContainsKey("sortDirection"))
+            {
+                sortDirection = instructions["sortDirection"].ToLower();
+            }
+
+            // Define default colors to cycle through
+            string[] backgroundColors = new string[]
+            {
+        "rgba(75, 192, 192, 0.7)",
+        "rgba(255, 99, 132, 0.7)",
+        "rgba(54, 162, 235, 0.7)",
+        "rgba(255, 206, 86, 0.7)",
+        "rgba(153, 102, 255, 0.7)",
+        "rgba(255, 159, 64, 0.7)",
+        "rgba(201, 203, 207, 0.7)",
+        "rgba(100, 149, 237, 0.7)"
+            };
+
+            string[] borderColors = new string[]
+            {
+        "rgba(75, 192, 192, 1)",
+        "rgba(255, 99, 132, 1)",
+        "rgba(54, 162, 235, 1)",
+        "rgba(255, 206, 86, 1)",
+        "rgba(153, 102, 255, 1)",
+        "rgba(255, 159, 64, 1)",
+        "rgba(201, 203, 207, 1)",
+        "rgba(100, 149, 237, 1)"
+            };
+
+            // Get series column name (value column for the pie chart)
+            string seriesColumn = "";
+            if (instructions.ContainsKey("series"))
+            {
+                string seriesValue = instructions["series"];
+                if (seriesValue.StartsWith("[") && seriesValue.EndsWith("]"))
+                {
+                    // For pie charts, we only use the first series (can't display multiple series in one pie)
+                    seriesValue = seriesValue.Substring(1, seriesValue.Length - 2);
+                    string firstSeries = seriesValue.Split(',')
+                        .Select(s => s.Trim().Trim('"', '\''))
+                        .FirstOrDefault();
+
+                    if (!string.IsNullOrEmpty(firstSeries))
+                    {
+                        seriesColumn = firstSeries;
+                    }
+                }
+                else
+                {
+                    seriesColumn = seriesValue;
+                }
+            }
+            else if (data.Columns.Count > 1)
+            {
+                // Default to second column
+                seriesColumn = data.Columns[1].ColumnName;
+            }
+
+            // Check if we need to group by a column
+            string groupByColumn = null;
+            if (instructions.ContainsKey("groupBy"))
+            {
+                groupByColumn = instructions["groupBy"];
+            }
+
+            // Get legends (defaults to first column for labels)
+            string legendsColumn = data.Columns[0].ColumnName;
+            if (instructions.ContainsKey("legends"))
+            {
+                string legendsValue = instructions["legends"];
+                if (legendsValue.StartsWith("[") && legendsValue.EndsWith("]"))
+                {
+                    // For pie charts, we only use the first legend
+                    legendsValue = legendsValue.Substring(1, legendsValue.Length - 2);
+                    string firstLegend = legendsValue.Split(',')
+                        .Select(s => s.Trim().Trim('"', '\''))
+                        .FirstOrDefault();
+
+                    if (!string.IsNullOrEmpty(firstLegend))
+                    {
+                        legendsColumn = firstLegend;
+                    }
+                }
+                else
+                {
+                    legendsColumn = legendsValue;
+                }
+            }
+
+            // Extract formatting options if available
+            if (instructions.ContainsKey("formatting"))
+            {
+                string formattingStr = instructions["formatting"];
+
+                if (formattingStr.Contains("title:"))
+                {
+                    int start = formattingStr.IndexOf("title:") + 6;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        chartTitle = formattingStr.Substring(start, end - start).Trim();
+                        if (chartTitle.StartsWith("\"") && chartTitle.EndsWith("\""))
+                            chartTitle = chartTitle.Substring(1, chartTitle.Length - 2);
+                    }
+                }
+
+                if (formattingStr.Contains("showLegend:"))
+                {
+                    int start = formattingStr.IndexOf("showLegend:") + 11;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showLegendStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showLegendStr, out showLegend);
+                    }
+                }
+
+                if (formattingStr.Contains("doughnut:"))
+                {
+                    int start = formattingStr.IndexOf("doughnut:") + 9;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string doughnutStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(doughnutStr, out isDoughnut);
+                    }
+                }
+
+                // Parse value display options
+                if (formattingStr.Contains("showValues:"))
+                {
+                    int start = formattingStr.IndexOf("showValues:") + 11;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showValuesStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showValuesStr, out showValues);
+                    }
+                }
+
+                if (formattingStr.Contains("showPercentages:"))
+                {
+                    int start = formattingStr.IndexOf("showPercentages:") + 16;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string showPercentagesStr = formattingStr.Substring(start, end - start).Trim();
+                        bool.TryParse(showPercentagesStr, out showPercentages);
+                    }
+                }
+
+                if (formattingStr.Contains("valuePosition:"))
+                {
+                    int start = formattingStr.IndexOf("valuePosition:") + 14;
+                    int end = formattingStr.IndexOf(",", start);
+                    if (end == -1) end = formattingStr.IndexOf("}", start);
+                    if (end > start)
+                    {
+                        string valuePositionStr = formattingStr.Substring(start, end - start).Trim();
+                        if (valuePositionStr.StartsWith("\"") && valuePositionStr.EndsWith("\""))
+                            valuePositionStr = valuePositionStr.Substring(1, valuePositionStr.Length - 2);
+
+                        if (valuePositionStr == "inside" || valuePositionStr == "outside" || valuePositionStr == "legend")
+                        {
+                            valuePosition = valuePositionStr;
+                        }
+                    }
+                }
+            }
+
+            // Get column indices
+            int legendsColumnIndex = -1;
+            int seriesColumnIndex = -1;
+            int groupByColumnIndex = -1;
+
+            // Find legend column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(legendsColumn, StringComparison.OrdinalIgnoreCase))
+                {
+                    legendsColumnIndex = i;
+                    break;
+                }
+            }
+
+            // Find series column index
+            for (int i = 0; i < data.Columns.Count; i++)
+            {
+                if (data.Columns[i].ColumnName.Equals(seriesColumn, StringComparison.OrdinalIgnoreCase))
+                {
+                    seriesColumnIndex = i;
+                    break;
+                }
+            }
+
+            // Find groupBy column index if specified
+            if (!string.IsNullOrEmpty(groupByColumn))
+            {
+                for (int i = 0; i < data.Columns.Count; i++)
+                {
+                    if (data.Columns[i].ColumnName.Equals(groupByColumn, StringComparison.OrdinalIgnoreCase))
+                    {
+                        groupByColumnIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // Variables to store data for the chart
+            List<string> labels = new List<string>();
+            List<double> values = new List<double>();
+            List<string> backgroundColorList = new List<string>();
+            List<string> borderColorList = new List<string>();
+
+            // Different behavior based on whether we're grouping or not
+            if (!string.IsNullOrEmpty(groupByColumn) && groupByColumnIndex != -1)
+            {
+                // We're generating a multi-chart presentation - one pie chart per groupBy value
+
+                // Get unique group values
+                List<string> uniqueGroups = data.AsEnumerable()
+                    .Select(row => row[groupByColumnIndex].ToString())
+                    .Distinct()
+                    .OrderBy(g => g)
+                    .ToList();
+
+                // Create a container div for all charts
+                string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
+
+                // Generate one pie chart for each group
+                for (int groupIndex = 0; groupIndex < uniqueGroups.Count; groupIndex++)
+                {
+                    string groupValue = uniqueGroups[groupIndex];
+                    string groupChartId = $"{chartId}_{groupIndex}";
+
+                    // Filter data for this group
+                    var groupData = data.AsEnumerable()
+                        .Where(row => row[groupByColumnIndex].ToString() == groupValue)
+                        .ToList();
+
+                    // Get labels and values for this group
+                    labels.Clear();
+                    values.Clear();
+                    backgroundColorList.Clear();
+                    borderColorList.Clear();
+
+                    for (int i = 0; i < groupData.Count; i++)
+                    {
+                        DataRow row = groupData[i];
+                        labels.Add(row[legendsColumnIndex].ToString());
+                        values.Add(Convert.ToDouble(row[seriesColumnIndex]));
+
+                        // Use the color palette with cycling
+                        backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
+                        borderColorList.Add(borderColors[i % borderColors.Length]);
+                    }
+
+                    // Create chart div for this group
+                    html += $"<div style='flex: 1; min-width: 300px; max-width: 500px; margin: 10px;'>";
+                    html += $"<h3 style='text-align: center;'>{groupValue}</h3>";
+                    html += $"<div style='height: 300px;'><canvas id='{groupChartId}'></canvas></div>";
+
+                    // Add the Chart.js initialization script for this group
+                    html += $@"
+<script>
+    $(document).ready(function() {{
+        var ctx = document.getElementById('{chartId}').getContext('2d');
+        
+        // Prepare chart data
+        var chartData = {{
+            labels: {JsonConvert.SerializeObject(labels)},
+            datasets: [{{
+                data: {JsonConvert.SerializeObject(values)},
+                backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
+                borderColor: {JsonConvert.SerializeObject(borderColorList)},
+                borderWidth: 1
+            }}]
+        }};
+        
+        // Apply sorting if specified
+        {(string.IsNullOrEmpty(sortBy) ? "" : $@"
+        // Sort data based on '{sortBy}' in '{sortDirection}' order
+        (function() {{
+            // Determine if sorting by labels (pie slice categories) or by values
+            var sortByLabels = '{sortBy}' === '{legendsColumn}';
+            
+            // Create pairs of [label, value, backgroundColor, borderColor] for sorting
+            var pairs = [];
+            for (var i = 0; i < chartData.labels.length; i++) {{
+                pairs.push({{
+                    label: chartData.labels[i],
+                    value: chartData.datasets[0].data[i],
+                    backgroundColor: chartData.datasets[0].backgroundColor[i],
+                    borderColor: chartData.datasets[0].borderColor[i]
+                }});
+            }}
+            
+            // Sort the pairs
+            pairs.sort(function(a, b) {{
+                if (sortByLabels) {{
+                    // Try to detect if labels are years or dates
+                    var aIsNumber = !isNaN(Number(a.label));
+                    var bIsNumber = !isNaN(Number(b.label));
+                    
+                    if (aIsNumber && bIsNumber) {{
+                        // For numeric labels like years, sort numerically
+                        return '{sortDirection}' === 'asc' ? 
+                            Number(a.label) - Number(b.label) : 
+                            Number(b.label) - Number(a.label);
+                    }} else {{
+                        // For text, sort alphabetically
+                        return '{sortDirection}' === 'asc' ? 
+                            a.label.localeCompare(b.label) : 
+                            b.label.localeCompare(a.label);
+                    }}
+                }} else {{
+                    // For numeric values, sort by the slice value
+                    return '{sortDirection}' === 'asc' ? a.value - b.value : b.value - a.value;
+                }}
+            }});
+            
+            // Create new sorted arrays
+            var sortedLabels = [];
+            var sortedValues = [];
+            var sortedBackgroundColors = [];
+            var sortedBorderColors = [];
+            
+            // Reorder all data based on the sorted pairs
+            for (var i = 0; i < pairs.length; i++) {{
+                sortedLabels.push(pairs[i].label);
+                sortedValues.push(pairs[i].value);
+                sortedBackgroundColors.push(pairs[i].backgroundColor);
+                sortedBorderColors.push(pairs[i].borderColor);
+            }}
+            
+            // Replace original data with sorted data
+            chartData.labels = sortedLabels;
+            chartData.datasets[0].data = sortedValues;
+            chartData.datasets[0].backgroundColor = sortedBackgroundColors;
+            chartData.datasets[0].borderColor = sortedBorderColors;
+        }})();
+        ")}
+        
+        var myPieChart = new Chart(ctx, {{
+            type: '{(isDoughnut ? "doughnut" : "pie")}',
+            data: chartData,
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{
+                        display: {showLegend.ToString().ToLower()},
+                        position: 'right',
+                        labels: {{
+                            generateLabels: function(chart) {{
+                                // Get the default legend items
+                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                const labels = original.call(this, chart);
+                                
+                                // Only modify if showing values or percentages in legend
+                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
+                                    // Calculate total for percentages
+                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    
+                                    // Modify the text to include values/percentages
+                                    labels.forEach((label, i) => {{
+                                        const value = chart.data.datasets[0].data[i];
+                                        const percentage = Math.round((value / total) * 100);
+                                        
+                                        let newText = label.text;
+                                        if ({showValues.ToString().ToLower()}) {{
+                                            newText += ' - ' + value.toLocaleString();
+                                        }}
+                                        if ({showPercentages.ToString().ToLower()}) {{
+                                            newText += ' (' + percentage + '%)';
+                                        }}
+                                        label.text = newText;
+                                    }});
+                                }}
+                                
+                                return labels;
+                            }}
+                        }}
+                    }},
+                    tooltip: {{
+                        callbacks: {{
+                            label: function(context) {{
+                                var label = context.label || '';
+                                var value = context.raw || 0;
+                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                var percentage = Math.round((value / total) * 100);
+                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
+                            }}
+                        }}
+                    }}
+                }}
+            }},
+            plugins: [
+                {{
+                    id: 'insideLabels',
+                    afterDraw: function(chart) {{
+                        // Only run this plugin for inside position with values or percentages
+                        var valuePosition = '{valuePosition}';
+                        var showValues = {showValues.ToString().ToLower()};
+                        var showPercentages = {showPercentages.ToString().ToLower()};
+                        
+                        if (valuePosition !== 'inside' || (!showValues && !showPercentages)) {{
+                            return;
+                        }}
+                        
+                        var ctx = chart.ctx;
+                        ctx.save();
+                        
+                        var total = 0;
+                        for (var i = 0; i < chart.data.datasets[0].data.length; i++) {{
+                            total += chart.data.datasets[0].data[i];
+                        }}
+                        
+                        for (var i = 0; i < chart.getDatasetMeta(0).data.length; i++) {{
+                            var arc = chart.getDatasetMeta(0).data[i];
+                            var value = chart.data.datasets[0].data[i];
+                            
+                            if (value === 0) continue; // Skip zero values
+                            
+                            // Calculate percentage
+                            var percentage = Math.round((value / total) * 100);
+                            
+                            // Calculate display position
+                            var midAngle = (arc.startAngle + arc.endAngle) / 2;
+                            var radius = arc.outerRadius * 0.6;
+                            
+                            // Position based on slice size
+                            var slicePercentage = value / total;
+                            if (slicePercentage < 0.1) {{ // Small slice
+                                radius = arc.outerRadius * 0.5;
+                            }} else if (slicePercentage > 0.25) {{ // Large slice
+                                radius = arc.outerRadius * 0.7;
+                            }}
+                            
+                            var x = arc.x + Math.cos(midAngle) * radius;
+                            var y = arc.y + Math.sin(midAngle) * radius;
+                            
+                            // Format text
+                            var displayText = '';
+                            if (showValues) {{
+                                displayText += value.toLocaleString();
+                            }}
+                            if (showPercentages) {{
+                                if (displayText) displayText += ' ';
+                                displayText += '(' + percentage + '%)';
+                            }}
+                            
+                            // Draw text
+                            ctx.font = 'bold 12px Arial';
+                            ctx.fillStyle = 'white';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(displayText, x, y);
+                        }}
+                        
+                        ctx.restore();
+                    }}
+                }}
+            ]
+        }});
+    }});
+</script>";
+
+                    html += "</div>"; // Close the chart div
+                }
+
+                html += "</div>"; // Close the container div
+                return html;
+            }
+            else
+            {
+                // Standard single pie chart
+                for (int i = 0; i < data.Rows.Count; i++)
+                {
+                    DataRow row = data.Rows[i];
+                    labels.Add(row[legendsColumnIndex].ToString());
+                    values.Add(Convert.ToDouble(row[seriesColumnIndex]));
+
+                    // Use the color palette with cycling
+                    backgroundColorList.Add(backgroundColors[i % backgroundColors.Length]);
+                    borderColorList.Add(borderColors[i % borderColors.Length]);
+
+                    // Custom colors can be added from formatting
+                    if (instructions.ContainsKey("formatting"))
+                    {
+                        string formattingStr = instructions["formatting"];
+
+                        if (formattingStr.Contains($"backgroundColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"backgroundColor{i}:") + 15 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                string backgroundColor = formattingStr.Substring(start, end - start).Trim();
+                                if (backgroundColor.StartsWith("\"") && backgroundColor.EndsWith("\""))
+                                    backgroundColor = backgroundColor.Substring(1, backgroundColor.Length - 2);
+                                backgroundColorList[i] = backgroundColor;
+                            }
+                        }
+
+                        if (formattingStr.Contains($"borderColor{i}:"))
+                        {
+                            int start = formattingStr.IndexOf($"borderColor{i}:") + 12 + i.ToString().Length;
+                            int end = formattingStr.IndexOf(",", start);
+                            if (end == -1) end = formattingStr.IndexOf("}", start);
+                            if (end > start)
+                            {
+                                string borderColor = formattingStr.Substring(start, end - start).Trim();
+                                if (borderColor.StartsWith("\"") && borderColor.EndsWith("\""))
+                                    borderColor = borderColor.Substring(1, borderColor.Length - 2);
+                                borderColorList[i] = borderColor;
+                            }
+                        }
+                    }
+                }
+
+                // Create the HTML container for the chart
+                string html = $"<div style='width:100%; height:400px;'><canvas id='{chartId}'></canvas></div>";
+
+                // Add the Chart.js initialization script with sorting capability
+                html += $@"
+<script>
+    $(document).ready(function() {{
+        var ctx = document.getElementById('{chartId}').getContext('2d');
+        
+        // Prepare chart data
+        var chartData = {{
+            labels: {JsonConvert.SerializeObject(labels)},
+            datasets: [{{
+                data: {JsonConvert.SerializeObject(values)},
+                backgroundColor: {JsonConvert.SerializeObject(backgroundColorList)},
+                borderColor: {JsonConvert.SerializeObject(borderColorList)},
+                borderWidth: 1
+            }}]
+        }};
+        
+        // Apply sorting if specified
+        {(string.IsNullOrEmpty(sortBy) ? "" : $@"
+        // Sort data based on '{sortBy}' in '{sortDirection}' order
+        (function() {{
+            // Determine if sorting by labels (pie slice categories) or by values
+            var sortByLabels = '{sortBy}' === '{legendsColumn}';
+            
+            // Create pairs of [label, value, backgroundColor, borderColor] for sorting
+            var pairs = [];
+            for (var i = 0; i < chartData.labels.length; i++) {{
+                pairs.push({{
+                    label: chartData.labels[i],
+                    value: chartData.datasets[0].data[i],
+                    backgroundColor: chartData.datasets[0].backgroundColor[i],
+                    borderColor: chartData.datasets[0].borderColor[i]
+                }});
+            }}
+            
+            // Sort the pairs
+            pairs.sort(function(a, b) {{
+                if (sortByLabels) {{
+                    // Try to detect if labels are years or dates
+                    var aIsNumber = !isNaN(Number(a.label));
+                    var bIsNumber = !isNaN(Number(b.label));
+                    
+                    if (aIsNumber && bIsNumber) {{
+                        // For numeric labels like years, sort numerically
+                        return '{sortDirection}' === 'asc' ? 
+                            Number(a.label) - Number(b.label) : 
+                            Number(b.label) - Number(a.label);
+                    }} else {{
+                        // For text, sort alphabetically
+                        return '{sortDirection}' === 'asc' ? 
+                            a.label.localeCompare(b.label) : 
+                            b.label.localeCompare(a.label);
+                    }}
+                }} else {{
+                    // For numeric values, sort by the slice value
+                    return '{sortDirection}' === 'asc' ? a.value - b.value : b.value - a.value;
+                }}
+            }});
+            
+            // Create new sorted arrays
+            var sortedLabels = [];
+            var sortedValues = [];
+            var sortedBackgroundColors = [];
+            var sortedBorderColors = [];
+            
+            // Reorder all data based on the sorted pairs
+            for (var i = 0; i < pairs.length; i++) {{
+                sortedLabels.push(pairs[i].label);
+                sortedValues.push(pairs[i].value);
+                sortedBackgroundColors.push(pairs[i].backgroundColor);
+                sortedBorderColors.push(pairs[i].borderColor);
+            }}
+            
+            // Replace original data with sorted data
+            chartData.labels = sortedLabels;
+            chartData.datasets[0].data = sortedValues;
+            chartData.datasets[0].backgroundColor = sortedBackgroundColors;
+            chartData.datasets[0].borderColor = sortedBorderColors;
+        }})();
+        ")}
+        
+        var myPieChart = new Chart(ctx, {{
+            type: '{(isDoughnut ? "doughnut" : "pie")}',
+            data: chartData,
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{
+                        display: {showLegend.ToString().ToLower()},
+                        position: 'right',
+                        labels: {{
+                            generateLabels: function(chart) {{
+                                // Get the default legend items
+                                const original = Chart.overrides.pie.plugins.legend.labels.generateLabels;
+                                const labels = original.call(this, chart);
+                                
+                                // Only modify if showing values or percentages in legend
+                                if ({(showValues || showPercentages).ToString().ToLower()} && '{valuePosition}' === 'legend') {{
+                                    // Calculate total for percentages
+                                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    
+                                    // Modify the text to include values/percentages
+                                    labels.forEach((label, i) => {{
+                                        const value = chart.data.datasets[0].data[i];
+                                        const percentage = Math.round((value / total) * 100);
+                                        
+                                        let newText = label.text;
+                                        if ({showValues.ToString().ToLower()}) {{
+                                            newText += ' - ' + value.toLocaleString();
+                                        }}
+                                        if ({showPercentages.ToString().ToLower()}) {{
+                                            newText += ' (' + percentage + '%)';
+                                        }}
+                                        label.text = newText;
+                                    }});
+                                }}
+                                
+                                return labels;
+                            }}
+                        }}
+                    }},
+                    tooltip: {{
+                        callbacks: {{
+                            label: function(context) {{
+                                var label = context.label || '';
+                                var value = context.raw || 0;
+                                var total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                var percentage = Math.round((value / total) * 100);
+                                return label + ': ' + value.toLocaleString() + ' (' + percentage + '%)';
+                            }}
+                        }}
+                    }}
+                }}
+            }},
+            plugins: [{{
+                id: 'valueLabels',
+                afterDraw: function(chart) {{
+                    // Only show labels if not legend mode and we're showing values or percentages
+                    if ('{valuePosition}' === 'legend' || !({(showValues || showPercentages).ToString().ToLower()})) {{
+                        return;
+                    }}
+                    
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    
+                    // Get the total for percentage calculations
+                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                    
+                    chart.getDatasetMeta(0).data.forEach((arc, i) => {{
+                        const value = chart.data.datasets[0].data[i];
+                        if (value === 0) return; // Skip zero values
+                        
+                        // Get position based on mode
+                        let position = {{x: arc.x, y: arc.y}};
+                        if ('{valuePosition}' === 'outside') {{
+                            const angle = (arc.startAngle + arc.endAngle) / 2;
+                            const radius = arc.outerRadius * 1.2;
+                            position.x += Math.cos(angle) * radius;
+                            position.y += Math.sin(angle) * radius;
+                        }}
+                        
+                        // Format text based on settings
+                        let text = '';
+                        if ({showValues.ToString().ToLower()}) {{
+                            text += value.toLocaleString();
+                        }}
+                        if ({showPercentages.ToString().ToLower()}) {{
+                            const percentage = Math.round((value / total) * 100);
+                            if (text) text += ' ';
+                            text += '(' + percentage + '%)';
+                        }}
+                        
+                        // Set styling
+                        ctx.font = 'bold 12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        
+                        if ('{valuePosition}' === 'inside') {{
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(text, position.x, position.y);
+                        }} else {{
+                            // Add background for better readability
+                            const width = ctx.measureText(text).width + 6;
+                            const height = 16;
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                            ctx.fillRect(position.x - width/2, position.y - height/2, width, height);
+                            ctx.fillStyle = '#333';
+                            ctx.fillText(text, position.x, position.y);
+                        }}
+                    }});
+                    
+                    ctx.restore();
+                }}
+            }}]
+        }});
+    }});
+</script>";
+
+                return html;
+            }
+        }
+
+        // Helper method to get unique ordered labels
+        private List<string> GetUniqueOrderedLabels(DataTable data, int legendsColumnIndex)
+        {
+            // Use OrderBy to ensure consistent ordering and prevent duplicates
+            return data.AsEnumerable()
+                .Select(row => row[legendsColumnIndex].ToString())
+                .Distinct()
+                .OrderBy(label => label)
+                .ToList();
         }
 
         // Helper method to find matching closing brace
