@@ -1,0 +1,60 @@
+﻿@model Dictionary<string, string>
+@{
+    ViewBag.Title = "System Diagnostics";
+}
+
+<h2>System Diagnostics</h2>
+
+<div class="alert alert-warning">
+    <strong>Warning:</strong> This page contains sensitive system information. It should be removed or secured in production.
+</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title">Diagnostic Information</h3>
+    </div>
+    <div class="panel-body">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>@item.Key</td>
+                        <td>@item.Value</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p>
+    <a href="@Url.Action("FileSystem")" class="btn btn-default">File System Explorer</a>
+    <button id="testDbBtn" class="btn btn-primary">Test Database Connection</button>
+</p>
+
+<script>
+    $(document).ready(function() {
+        $('#testDbBtn').click(function() {
+            $.ajax({
+                url: '@Url.Action("TestConnection")',
+                type: 'GET',
+                dataType: 'json',
+                success: function(data) {
+                    alert('Database Connection: ' + data.Status);
+                    console.log(data);
+                },
+                error: function(xhr, status, error) {
+                    alert('Error testing connection: ' + error);
+                    console.error(xhr.responseText);
+                }
+            });
+        });
+    });
+</script>

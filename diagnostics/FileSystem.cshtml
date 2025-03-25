@@ -1,0 +1,52 @@
+﻿@model WebApplication6.Controllers.FileSystemViewModel
+@{
+    ViewBag.Title = "File System Explorer";
+}
+
+<h2>File System Explorer</h2>
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title">Current Path: @Model.Path</h3>
+    </div>
+    <div class="panel-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h4>Directories</h4>
+                <ul class="list-group">
+                    @foreach (var dir in Model.Directories)
+                    {
+                        <li class="list-group-item">
+                            <span class="glyphicon glyphicon-folder-open"></span>
+                            @dir
+                        </li>
+                    }
+                    @if (!Model.Directories.Any())
+                    {
+                        <li class="list-group-item">No directories found</li>
+                    }
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h4>Files</h4>
+                <ul class="list-group">
+                    @foreach (var file in Model.Files)
+                    {
+                        <li class="list-group-item">
+                            <span class="glyphicon glyphicon-file"></span>
+                            @file
+                        </li>
+                    }
+                    @if (!Model.Files.Any())
+                    {
+                        <li class="list-group-item">No files found</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p>
+    <a href="@Url.Action("Index")" class="btn btn-default">Back to Diagnostics</a>
+</p>
