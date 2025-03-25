@@ -14,6 +14,12 @@ namespace WebApplication6
             routes.IgnoreRoute("{resource}.axd/{*pathInfo}");
 
             routes.MapRoute(
+                name: "ReportsDEV",
+                url: "Report/RenderReportDEV/{templateName}",
+                defaults: new { controller = "Report", action = "RenderReportDEV", templateName = UrlParameter.Optional }
+            );
+
+            routes.MapRoute(
                 name: "Report",
                 url: "Report/{templateName}",
                 defaults: new { controller = "Report", action = "RenderReport" }
